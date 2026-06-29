@@ -1,10 +1,19 @@
+@import "tailwindcss"; /* 1. Injects the Tailwind v4 Engine */
 @import './base.css';
 
-body {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* 2. Global Layout Reset to force a full-screen application window */
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
   overflow: hidden;
+}
+
+body {
+  /* REMOVED: display: flex, align-items, justify-content */
   background-image: url('./wavy-lines.svg');
   background-size: cover;
   user-select: none;
@@ -27,13 +36,11 @@ code {
 }
 
 #root {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  margin-bottom: 80px;
+  /* REMOVED: display: flex, centering rules, and the 80px bottom margin */
+  display: block; 
 }
 
+/* --- Preserved Template Classes (Safe to leave as-is) --- */
 .logo {
   margin-bottom: 20px;
   -webkit-user-drag: none;

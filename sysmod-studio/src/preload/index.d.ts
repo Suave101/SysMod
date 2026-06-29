@@ -1,8 +1,9 @@
-import { ElectronAPI } from '@electron-toolkit/preload'
+export interface ISysmodAPI {
+  saveJavaFile: (code: string) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+}
 
 declare global {
   interface Window {
-    electron: ElectronAPI
-    api: unknown
+    sysmodAPI: ISysmodAPI;
   }
 }
