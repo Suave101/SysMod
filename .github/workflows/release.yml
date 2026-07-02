@@ -12,6 +12,10 @@ jobs:
     permissions:
       contents: write
 
+    defaults:
+      run:
+        working-directory: ./sysmod-studio
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -19,14 +23,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: 'npm'
+          cache-dependency-path: './sysmod-studio/package-lock.json' 
 
       - name: Install Dependencies
-        run: npm ci # Uses package-lock.json for a clean, reliable install
-
-      - name: Build Frontend
-        run: npm run build
+        run: npm ci
 
       - name: Build and Publish Electron App
         run: npx electron-builder --win --publish always
