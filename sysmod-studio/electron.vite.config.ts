@@ -16,6 +16,11 @@ export default defineConfig({
         '@renderer': resolve('src/renderer/src')
       }
     },
+    optimizeDeps: {
+      // Monaco-editor has hundreds of lazy ESM chunks; let Rollup handle it
+      // directly at build time instead of pre-bundling with esbuild.
+      exclude: ['monaco-editor'],
+    },
     plugins: [
       react(),
       tailwindcss() // 2. Add it right here to the renderer pipeline

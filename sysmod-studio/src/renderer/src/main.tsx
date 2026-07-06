@@ -1,4 +1,6 @@
 import './assets/main.css'
+// Bootstrap Monaco BEFORE React renders – must be first non-CSS import
+import './utils/monacoSetup'
 
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
