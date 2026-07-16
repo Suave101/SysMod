@@ -118,7 +118,6 @@ ${initializations}    }
 }
 `;
 }
-
 // ─────────────────────────────────────────────────────────────────────────────
 // AADL Code Generator
 // ─────────────────────────────────────────────────────────────────────────────
@@ -131,7 +130,11 @@ const DEVICE_FEATURES: Record<string, string> = {
     '    servo_port_0 : out data port;\n' +
     '    servo_port_1 : out data port;\n' +
     '    i2c_bus_0    : out data port;\n' +
-    '    usb_host     : out data port;',
+    '    usb_host     : out data port;\n' +
+    '    -- Integrated Sensors\n' +
+    '    imu_out      : out data port;\n' +
+    '    voltage_out  : out data port;\n' +
+    '    current_out  : out data port;',
   DcMotor:    '    power_in      : in  data port;',
   Servo:      '    pwm_in        : in  data port;',
   ColorSensor:'    i2c_out       : out data port;',

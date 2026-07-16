@@ -2,6 +2,33 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 
+// Handles writing the JSON file to the user's local AppData directory
+ipcMain.handle('save-local-json', async (_event, data) => {
+  try {
+    const filePath = path.join(app.getPath('userData'), 'workspace-data.json')
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8')
+    return { success: true }
+  } catch (error: any) {
+    console.error("Failed to save JSON:", error)
+    return { success: false, error: error.message }
+  }
+})
+
+// Handles loading the JSON file on startup
+ipcMain.handle('load-local-json', async () => {
+  try {
+    const filePath = path.join(app.getPath('userData'), 'workspace-data.json')
+    if (fs.existsSync(filePath)) {
+      const raw = fs.readFileSync(filePath, 'utf-8')
+      return JSON.parse(raw)
+    }
+    return null // No file saved yet
+  } catch (error) {
+    console.error("Failed to load JSON:", error)
+    return null
+  }
+})
+
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1280,

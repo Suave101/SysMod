@@ -5,5 +5,11 @@ export interface ISysmodAPI {
 declare global {
   interface Window {
     sysmodAPI: ISysmodAPI;
+    electronAPI: {
+      saveData: (data: any) => Promise<{ success: boolean; error?: string }>
+      loadData: () => Promise<any>
+    };
   }
 }
+
+export {}
