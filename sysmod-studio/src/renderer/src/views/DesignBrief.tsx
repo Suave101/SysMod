@@ -126,7 +126,7 @@ export default function DesignBrief() {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-indigo-600 text-white">
-                PLTW Portfolio Component
+                Engineering Portfolio Component
               </span>
               <span className="text-slate-400 text-xs font-mono">Page 1: Project Scope &amp; Parameters</span>
             </div>
