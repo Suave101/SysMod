@@ -388,10 +388,10 @@ export default function App(): React.JSX.Element {
           </div>
         </div>
 
-        <div className="p-4 border-t border-slate-800 space-y-2 bg-slate-950/40">
+        <div className="p-4 border-t border-slate-800 flex flex-col gap-3 bg-slate-950/40">
           <button 
             onClick={clearWorkspace}
-            className="w-full py-2 px-3 rounded flex items-center justify-center gap-2 text-xs font-mono bg-slate-900 border border-red-500/20 hover:border-red-500/50 text-red-400 transition"
+            className="w-full mb-1 py-2 px-3 rounded flex items-center justify-center gap-2 text-xs font-mono bg-slate-900 border border-red-500/20 hover:border-red-500/50 text-red-400 transition"
           >
             <Trash2 className="w-3.5 h-3.5" />
             Clear Canvas
