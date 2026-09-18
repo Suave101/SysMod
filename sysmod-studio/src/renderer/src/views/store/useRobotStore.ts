@@ -177,6 +177,21 @@ const HARDWARE_LIBRARY: Record<string, any> = {
   }
 };
 
+// --- CONNECTION RULES ---
+// Define rules for hardware connections here. Key format: "hardwareType:targetHandleId"
+interface ConnectionRule {
+  maxConnections?: number; 
+  allowedSourcePrefixes?: string[];
+}
+
+const CONNECTION_RULES: Record<string, ConnectionRule> = {
+  'DcMotor:power_in': {
+    maxConnections: 1,
+    allowedSourcePrefixes: ['motor_'],
+  },
+};
+
+
 interface RobotStoreState {
   nodes: RobotNode[];
   edges: Edge[];
@@ -195,8 +210,28 @@ export const useRobotStore = create<RobotStoreState>((set, get) => ({
   
   onNodesChange: (c) => set({ nodes: applyNodeChanges(c, get().nodes) }),
   onEdgesChange: (c) => set({ edges: applyEdgeChanges(c, get().edges) }),
-  onConnect: (connection) => set({ edges: addEdge({ ...connection, animated: true, style: { stroke: '#94a3b8' } }, get().edges) }),
-  
+  onConnect: (connection) => {
+    const { nodes, edges } = get();
+    const targetNode = nodes.find((n) => n.id === connection.target);
+    const ruleKey = `${targetNode?.data.hardwareType}:${connection.targetHandle}`;
+    const rule = CONNECTION_RULES[ruleKey];
+    if (rule) {
+      if (rule.maxConnections !== undefined) {
+        const currentCount = edges.filter(
+          (e) => e.target === connection.target && e.targetHandle === connection.targetHandle
+        ).length;
+        if (currentCount >= rule.maxConnections) return;  
+      }
+      if (rule.allowedSourcePrefixes) {
+        const isAllowed = rule.allowedSourcePrefixes.some((prefix) =>
+          connection.sourceHandle?.startsWith(prefix)
+        );
+        if (!isAllowed) return;  
+      }
+    }
+    set({ edges: addEdge({ ...connection, animated: true, style: { stroke: '#94a3b8' } }, edges) });
+  },
+
   addDevice: (type: string) => {
     const id = `${type.toLowerCase()}_${Date.now()}`;
     const defaultData: RobotNodeData = {
