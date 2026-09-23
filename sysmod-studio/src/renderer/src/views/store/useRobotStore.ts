@@ -33,7 +33,7 @@ const HARDWARE_LIBRARY: Record<string, any> = {
   // ==========================================
   // I2C SENSORS (Outputs to Control Hub Target)
   // ==========================================
-  RevColorSensor: {
+  ColorSensor: {
     theme: 'cyan', iconName: 'Eye',
     inputs: [],
     outputs: [{ id: 'i2c_out', label: 'I2C Data Bus', color: '!bg-cyan-400' }],
@@ -213,6 +213,23 @@ export const useRobotStore = create<RobotStoreState>((set, get) => ({
   onConnect: (connection) => {
     const { nodes, edges } = get();
     const targetNode = nodes.find((n) => n.id === connection.target);
+    const sourceNode = nodes.find((n) => n.id === connection.source);
+
+    if (sourceNode?.data.hardwareType === 'ColorSensor') {
+      if (
+        targetNode?.data.hardwareType !== 'ControlHub' ||
+        !connection.targetHandle?.startsWith('i2c_')
+      ) {
+        return;
+      }
+
+      const alreadyConnected = edges.some(
+        (edge) =>
+          edge.source === connection.source &&
+          edge.sourceHandle === connection.sourceHandle
+      );
+      if (alreadyConnected) return;
+    }
     const ruleKey = `${targetNode?.data.hardwareType}:${connection.targetHandle}`;
     const rule = CONNECTION_RULES[ruleKey];
     if (rule) {
