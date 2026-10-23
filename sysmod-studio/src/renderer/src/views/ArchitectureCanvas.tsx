@@ -16,8 +16,7 @@ import {
   Camera, 
   Server, 
   ArrowLeft, 
-  Save, 
-  AlertCircle, 
+  Save,
   ShieldAlert 
 } from 'lucide-react';
 import '@xyflow/react/dist/style.css';
