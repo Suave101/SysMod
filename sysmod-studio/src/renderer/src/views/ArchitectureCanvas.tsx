@@ -1,21 +1,20 @@
 import React, { useMemo, useState } from 'react';
-import { ReactFlow, Background, Controls, NodeTypes } from '@xyflow/react';
-import { useRobotStore, WIRE_STYLES, PortType } from './store/useRobotStore';
+import { ReactFlow, Background, Controls, NodeTypes, Edge } from '@xyflow/react';
+import { useRobotStore, WIRE_STYLES } from './store/useRobotStore';
 import { ControlHubNode } from './components/ControlHubNode';
 import { StandardNode } from './components/StandardNode';
 import { CodeViewerModal } from './components/CodeViewerModal';
-import { PriceEditorModal } from './components/PriceEditorModal';
-import { generateJavaCode, generateAadlCode } from './utils/codeGenerators';
+import { SystemVerificationModal } from './components/SystemVerificationModal';
+import { generatePythonCode, generateJavaCode, generateAadlCode } from './utils/codeGenerators';
+import { verifySystemProperties, VerificationReport } from './utils/systemVerifier';
 import { useNavigate } from 'react-router-dom';
 import { 
   Cpu, 
   Plus, 
-  FileCode, 
   Layers, 
   Trash2, 
   Eye, 
   Zap, 
-  Settings, 
   Camera, 
   Server, 
   ArrowLeft, 
@@ -24,6 +23,9 @@ import {
   Wind,
   Radio,
   Activity,
+  Battery,
+  ShieldCheck,
+  FileCode,
   LucideIcon
 } from 'lucide-react';
 import '@xyflow/react/dist/style.css';
@@ -41,16 +43,17 @@ export interface HardwareItemConfig {
 }
 
 export const FRC_HARDWARE_CATALOG: HardwareItemConfig[] = [
-  { id: 'roboRIO', label: 'roboRIO 2.0', defaultCost: 450.00, category: 'Control & Power', icon: Cpu, borderColor: 'border-indigo-500/30', iconColor: 'text-indigo-400' },
-  { id: 'PDH', label: 'REV PDH (20 Ch)', defaultCost: 240.00, category: 'Control & Power', icon: Zap, borderColor: 'border-amber-500/30', iconColor: 'text-amber-500' },
-  { id: 'PneumaticsHub', label: 'Pneumatics Hub', defaultCost: 120.00, category: 'Control & Power', icon: Wind, borderColor: 'border-sky-500/30', iconColor: 'text-sky-400' },
-  { id: 'KrakenX60', label: 'Kraken X60 Motor', defaultCost: 180.00, category: 'Actuators & Drive', icon: Activity, borderColor: 'border-emerald-500/30', iconColor: 'text-emerald-400' },
-  { id: 'SparkMaxNEO', label: 'NEO + SPARK Max', defaultCost: 125.00, category: 'Actuators & Drive', icon: Zap, borderColor: 'border-orange-500/30', iconColor: 'text-orange-400' },
-  { id: 'SolenoidValve', label: 'Solenoid Valve', defaultCost: 45.00, category: 'Actuators & Drive', icon: Wind, borderColor: 'border-cyan-500/30', iconColor: 'text-cyan-400' },
-  { id: 'Limelight', label: 'Limelight 3/3G', defaultCost: 400.00, category: 'Sensors & Vision', icon: Camera, borderColor: 'border-lime-500/30', iconColor: 'text-lime-400' },
-  { id: 'CANcoder', label: 'CTRE CANcoder', defaultCost: 65.00, category: 'Sensors & Vision', icon: Gauge, borderColor: 'border-purple-500/30', iconColor: 'text-purple-400' },
-  { id: 'Pigeon2', label: 'Pigeon 2.0 IMU', defaultCost: 199.00, category: 'Sensors & Vision', icon: Radio, borderColor: 'border-rose-500/30', iconColor: 'text-rose-400' },
-  { id: 'Coprocessor', label: 'Orange Pi / Jetson', defaultCost: 120.00, category: 'Coprocessors', icon: Server, borderColor: 'border-indigo-500/30', iconColor: 'text-indigo-400' }
+  { id: 'Battery12V', label: '12V FRC Battery', defaultCost: 50.00, category: 'Control & Power', icon: Battery, borderColor: 'border-red-500/40', iconColor: 'text-red-500' },
+  { id: 'PDH', label: 'REV PDH', defaultCost: 240.00, category: 'Control & Power', icon: Zap, borderColor: 'border-amber-500/40', iconColor: 'text-amber-500' },
+  { id: 'roboRIO', label: 'roboRIO 2.0', defaultCost: 450.00, category: 'Control & Power', icon: Cpu, borderColor: 'border-indigo-500/40', iconColor: 'text-indigo-400' },
+  { id: 'PneumaticsHub', label: 'Pneumatics Hub', defaultCost: 120.00, category: 'Control & Power', icon: Wind, borderColor: 'border-sky-500/40', iconColor: 'text-sky-400' },
+  { id: 'KrakenX60', label: 'Kraken X60 Motor', defaultCost: 180.00, category: 'Actuators & Drive', icon: Activity, borderColor: 'border-emerald-500/40', iconColor: 'text-emerald-400' },
+  { id: 'SparkMaxNEO', label: 'NEO + SPARK Max', defaultCost: 125.00, category: 'Actuators & Drive', icon: Zap, borderColor: 'border-orange-500/40', iconColor: 'text-orange-400' },
+  { id: 'SolenoidValve', label: 'Solenoid Valve', defaultCost: 45.00, category: 'Actuators & Drive', icon: Wind, borderColor: 'border-cyan-500/40', iconColor: 'text-cyan-400' },
+  { id: 'Limelight', label: 'Limelight 3/3G', defaultCost: 400.00, category: 'Sensors & Vision', icon: Camera, borderColor: 'border-lime-500/40', iconColor: 'text-lime-400' },
+  { id: 'CANcoder', label: 'CTRE CANcoder', defaultCost: 65.00, category: 'Sensors & Vision', icon: Gauge, borderColor: 'border-purple-500/40', iconColor: 'text-purple-400' },
+  { id: 'Pigeon2', label: 'Pigeon 2.0 IMU', defaultCost: 199.00, category: 'Sensors & Vision', icon: Radio, borderColor: 'border-rose-500/40', iconColor: 'text-rose-400' },
+  { id: 'Coprocessor', label: 'Orange Pi / Jetson', defaultCost: 120.00, category: 'Coprocessors', icon: Server, borderColor: 'border-indigo-500/40', iconColor: 'text-indigo-400' }
 ];
 
 export default function App(): React.JSX.Element {
@@ -63,16 +66,19 @@ export default function App(): React.JSX.Element {
     onEdgesChange, 
     onConnect, 
     addDevice, 
-    clearWorkspace 
+    removeEdge,
+    clearWorkspace
   } = useRobotStore();
 
-  const [deviceCosts, setDeviceCosts] = useState<Record<string, number>>({
-    roboRIO: 450, PDH: 240, PneumaticsHub: 120, KrakenX60: 180, SparkMaxNEO: 125, SolenoidValve: 45, Limelight: 400, CANcoder: 65, Pigeon2: 199, Coprocessor: 120
-  });
-
+  // Code Viewer Modal State
   const [isCodeModalOpen, setIsCodeModalOpen] = useState(false);
   const [modalAadl, setModalAadl] = useState('');
   const [modalJava, setModalJava] = useState('');
+  const [modalPython, setModalPython] = useState('');
+
+  // Verification Diagnostics Modal State
+  const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
+  const [verifyReport, setVerifyReport] = useState<VerificationReport>({ passed: true, score: 100, issues: [] });
 
   const nodeTypes = useMemo<NodeTypes>(() => ({
     ControlHub: ControlHubNode,
@@ -82,15 +88,51 @@ export default function App(): React.JSX.Element {
   const handleViewCode = (): void => {
     setModalAadl(generateAadlCode(nodes, edges));
     setModalJava(generateJavaCode(nodes, edges));
+    setModalPython(generatePythonCode(nodes, edges));
     setIsCodeModalOpen(true);
+  };
+
+  const handleRunVerification = (): void => {
+    const report = verifySystemProperties(nodes, edges);
+    setVerifyReport(report);
+    setIsVerifyModalOpen(true);
+  };
+
+  const handleExportRobotPy = async (): Promise<void> => {
+    const pythonCode = generatePythonCode(nodes, edges);
+    try {
+      if (window.sysmodAPI && window.sysmodAPI.saveJavaFile) {
+        const response = await window.sysmodAPI.saveJavaFile(pythonCode);
+        if (response.success && response.filePath) {
+          alert(`RobotPy script exported successfully to:\n${response.filePath}`);
+        }
+      } else {
+        const blob = new Blob([pythonCode], { type: 'text/x-python' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'robot.py';
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Failed to save robot.py script.');
+    }
+  };
+
+  const handleEdgeClick = (_: React.MouseEvent, edge: Edge) => {
+    if (window.confirm(`Delete connection "${edge.label || 'Wire'}"?`)) {
+      removeEdge(edge.id);
+    }
   };
 
   return (
     <div className="flex w-screen h-screen bg-slate-950 text-slate-100 overflow-hidden">
       {/* Sidebar Controls */}
       <aside className="w-80 border-r border-slate-800 bg-slate-900 flex flex-col justify-between z-10 shadow-2xl">
-        <div className="p-4 space-y-5 overflow-y-auto max-h-[calc(100vh-160px)]">
-          <div className="flex items-center gap-2 pb-4 border-b border-slate-800">
+        <div className="p-4 space-y-4 overflow-y-auto max-h-[calc(100vh-200px)]">
+          <div className="flex items-center gap-2 pb-3 border-b border-slate-800">
             <Layers className="text-indigo-500 w-6 h-6" />
             <div>
               <h1 className="text-lg font-mono font-black tracking-tight text-slate-100">SysMod Studio</h1>
@@ -102,13 +144,22 @@ export default function App(): React.JSX.Element {
             <button onClick={() => navigate('/brainstorming')} className="py-2 px-3 rounded bg-slate-950 border border-slate-800 text-[11px] font-mono font-bold text-slate-300 flex items-center justify-center gap-1">
               <ArrowLeft className="w-3.5 h-3.5" /> Back
             </button>
-            <button onClick={() => alert('Workspace JSON Saved')} className="py-2 px-3 rounded bg-indigo-950/40 border border-indigo-500/30 text-[11px] font-mono font-bold text-indigo-300 flex items-center justify-center gap-1">
+            <button onClick={() => alert('Workspace Saved')} className="py-2 px-3 rounded bg-indigo-950/40 border border-indigo-500/30 text-[11px] font-mono font-bold text-indigo-300 flex items-center justify-center gap-1">
               <Save className="w-3.5 h-3.5" /> Save JSON
             </button>
           </div>
 
-          <div className="space-y-4 border-t border-slate-800/80 pt-4">
-            <h2 className="text-xs font-mono uppercase tracking-wider text-slate-400 px-1">FRC Hardware Component Palette</h2>
+          {/* Verification Diagnostics Trigger */}
+          <button
+            onClick={handleRunVerification}
+            className="w-full py-2.5 px-3 rounded flex items-center justify-center gap-2 text-xs font-mono bg-emerald-950/40 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-900/60 transition font-bold"
+          >
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            Verify FRC System Rules
+          </button>
+
+          <div className="space-y-3 border-t border-slate-800/80 pt-3">
+            <h2 className="text-xs font-mono uppercase tracking-wider text-slate-400 px-1">FRC Component Palette</h2>
             {FRC_HARDWARE_CATALOG.map((item) => {
               const ItemIcon = item.icon;
               return (
@@ -128,29 +179,42 @@ export default function App(): React.JSX.Element {
           </div>
         </div>
 
-        <div className="p-4 border-t border-slate-800 flex flex-col gap-3 bg-slate-950/40">
+        {/* Footer Actions */}
+        <div className="p-4 border-t border-slate-800 flex flex-col gap-2.5 bg-slate-950/40">
           <button onClick={clearWorkspace} className="w-full py-2 px-3 rounded flex items-center justify-center gap-2 text-xs font-mono bg-slate-900 border border-red-500/20 text-red-400 hover:border-red-500/50 transition">
             <Trash2 className="w-3.5 h-3.5" /> Clear Canvas
           </button>
-          <button onClick={handleViewCode} className="w-full py-2.5 px-3 rounded flex items-center justify-center gap-2 text-xs font-mono bg-slate-900 border border-indigo-500/30 text-indigo-400 hover:text-indigo-300 transition">
-            <Eye className="w-3.5 h-3.5" /> Preview Code
+          <button onClick={handleViewCode} className="w-full py-2 px-3 rounded flex items-center justify-center gap-2 text-xs font-mono bg-slate-900 border border-indigo-500/30 text-indigo-400 hover:text-indigo-300 transition">
+            <Eye className="w-3.5 h-3.5" /> Preview Code (Python/Java/AADL)
+          </button>
+          <button onClick={handleExportRobotPy} className="w-full py-2.5 px-3 rounded flex items-center justify-center gap-2 text-xs font-mono font-bold bg-emerald-600 text-white hover:bg-emerald-500 transition shadow-lg shadow-emerald-600/20">
+            <FileCode className="w-4 h-4" /> Export robot.py (RobotPy)
           </button>
         </div>
       </aside>
 
-      {/* Main Workspace Viewport */}
+      {/* Main Canvas Viewport */}
       <main className="flex-1 h-full relative bg-slate-950">
-        {/* Connection Protocol Legend Bar */}
         <div className="absolute top-4 right-4 z-20 bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-xl p-3 shadow-2xl flex items-center gap-4 text-xs font-mono">
           <span className="text-slate-400 font-bold uppercase text-[10px] tracking-wider border-r border-slate-800 pr-3">
-            Wiring Standards:
+            Wiring Standard:
           </span>
-          {Object.entries(WIRE_STYLES).map(([type, style]) => (
-            <div key={type} className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: style.color }} />
-              <span className="text-slate-300 text-[11px]">{style.label}</span>
-            </div>
-          ))}
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-600" />
+            <span className="text-slate-300 text-[11px]">12V Battery</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
+            <span className="text-slate-300 text-[11px]">40A High (0-19)</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-orange-500" />
+            <span className="text-slate-300 text-[11px]">15A Low (20-22)</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+            <span className="text-slate-300 text-[11px]">CAN Bus</span>
+          </div>
         </div>
 
         <ReactFlow
@@ -159,6 +223,7 @@ export default function App(): React.JSX.Element {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onEdgeClick={handleEdgeClick}
           nodeTypes={nodeTypes}
           fitView
           proOptions={proOptions}
@@ -168,11 +233,20 @@ export default function App(): React.JSX.Element {
         </ReactFlow>
       </main>
 
+      {/* Code Viewer Modal */}
       <CodeViewerModal
         isOpen={isCodeModalOpen}
         onClose={() => setIsCodeModalOpen(false)}
         aadlCode={modalAadl}
         javaCode={modalJava}
+        pythonCode={modalPython}
+      />
+
+      {/* System Rule Diagnostics Modal */}
+      <SystemVerificationModal
+        isOpen={isVerifyModalOpen}
+        onClose={() => setIsVerifyModalOpen(false)}
+        report={verifyReport}
       />
     </div>
   );
