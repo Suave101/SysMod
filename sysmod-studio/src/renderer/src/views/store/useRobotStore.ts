@@ -10,7 +10,7 @@ import {
   addEdge 
 } from '@xyflow/react';
 
-export type PortType = 'pwr12v' | 'pwr10a' | 'pwr5v' | 'can' | 'eth' | 'pneumatic' | 'usb';
+export type PortType = 'pwr12v' | 'pwr10a' | 'pwrRegulated' | 'can' | 'canfd' | 'eth' | 'pneumatic' | 'pwm' | 'dio' | 'rsl' | 'usb';
 
 export const MAX_HIGH_CHANNELS = 20; // Ports 0-19 (40A ATO)
 export const MAX_LOW_CHANNELS = 3;   // Ports 20-22 (15A ATM)
@@ -21,7 +21,9 @@ export interface FRCNodeData extends Record<string, unknown> {
   deviceType: string;
   category: 'Control & Power' | 'Actuators & Drive' | 'Sensors & Vision' | 'Coprocessors';
   canId?: number;
-  powerChannel?: string; // e.g. "High Ch #3", "Low Ch #21", "Switchable Ch #23"
+  dioPort?: number;
+  pwmPort?: number;
+  powerChannel?: string;
   protocol?: string;
   details?: string;
 }
@@ -52,26 +54,63 @@ interface RobotStore {
 }
 
 export const WIRE_STYLES: Record<string, { color: string; label: string; animated: boolean; strokeWidth: number; strokeDasharray?: string }> = {
-  pwrBattery: { color: '#dc2626', label: '12V Battery Main (120A)', animated: false, strokeWidth: 4 },
+  pwrBattery: { color: '#dc2626', label: '12V Main Unfiltered', animated: false, strokeWidth: 4 },
   pwrHigh: { color: '#ef4444', label: '40A High-Current (ATO)', animated: false, strokeWidth: 3 },
   pwrLow: { color: '#f97316', label: '15A Low-Current (ATM)', animated: false, strokeWidth: 2.5 },
-  pwrSwitched: { color: '#e11d48', label: '15A Switchable (LED/Acc)', animated: false, strokeWidth: 2.5, strokeDasharray: '4 2' },
-  can: { color: '#eab308', label: 'CAN Bus', animated: true, strokeWidth: 2.5 },
-  eth: { color: '#10b981', label: 'Ethernet', animated: true, strokeWidth: 2.5 },
-  pneumatic: { color: '#0284c7', label: 'Pneumatics', animated: false, strokeWidth: 2.5, strokeDasharray: '6 3' },
+  pwrSwitched: { color: '#e11d48', label: '15A Switchable', animated: false, strokeWidth: 2.5, strokeDasharray: '4 2' },
+  pwrRegulated: { color: '#38bdf8', label: 'Regulated 5V/12V Power', animated: false, strokeWidth: 2 },
+  can: { color: '#eab308', label: 'Standard CAN Bus (1Mbps)', animated: true, strokeWidth: 2.5 },
+  canfd: { color: '#f59e0b', label: 'CTRE CAN FD Bus (8Mbps)', animated: true, strokeWidth: 3 },
+  eth: { color: '#10b981', label: 'Ethernet Network', animated: true, strokeWidth: 2.5 },
+  pneumatic: { color: '#0284c7', label: 'Pneumatics Air', animated: false, strokeWidth: 2.5, strokeDasharray: '6 3' },
+  pwm: { color: '#a855f7', label: 'PWM Signal', animated: false, strokeWidth: 2 },
+  dio: { color: '#c084fc', label: 'DIO / Sensor Signal', animated: false, strokeWidth: 2 },
+  rsl: { color: '#facc15', label: 'RSL Indicator Wiring', animated: true, strokeWidth: 2 },
+  usb: { color: '#6366f1', label: 'USB Data Link', animated: false, strokeWidth: 2 },
 };
 
 const FRC_DEVICE_DEFAULTS: Record<string, { label: string; category: FRCNodeData['category']; protocol: string; details: string }> = {
+  // Control & Power
   Battery12V: { label: '12V FRC Battery', category: 'Control & Power', protocol: '12V DC (SB50)', details: '12V 18Ah SLA Battery' },
-  roboRIO: { label: 'roboRIO 2.0', category: 'Control & Power', protocol: 'CAN / Eth / USB', details: 'Main Robot Controller' },
+  MainBreaker120A: { label: '120A Main Breaker', category: 'Control & Power', protocol: 'High Current Pass', details: 'Primary System Power Switch' },
   PDH: { label: 'REV PDH', category: 'Control & Power', protocol: '12V Power / CAN', details: '20 High / 3 Low / 1 Switched' },
+  roboRIO: { label: 'roboRIO 2.0', category: 'Control & Power', protocol: 'CAN / Eth / USB / DIO', details: 'Main Robot Controller' },
+  RSL: { label: 'Robot Signal Light (RSL)', category: 'Control & Power', protocol: 'RSL Signal', details: 'Allen-Bradley Status Light' },
+  RadioSwitch: { label: 'VH-109 Radio / Eth Switch', category: 'Control & Power', protocol: 'Ethernet', details: 'Managed Ethernet Hub' },
   PneumaticsHub: { label: 'Pneumatics Hub', category: 'Control & Power', protocol: 'CAN / Pneumatic', details: 'PCM/PH Controller' },
-  KrakenX60: { label: 'Kraken X60 Motor', category: 'Actuators & Drive', protocol: 'CAN Bus / Talon FX', details: 'Brushless Actuator' },
+  PressureSwitch: { label: 'Pneumatic Pressure Switch', category: 'Control & Power', protocol: 'Cutoff Switch Signal', details: '120 PSI Auto Cutoff Switch' },
+  VRM_MPM: { label: 'Mini Power Module / VRM', category: 'Control & Power', protocol: 'Aux Power', details: 'Regulated Aux Power Board' },
+  BuckConverter: { label: '5V/12V Buck Converter', category: 'Control & Power', protocol: 'DC-DC Regulated', details: 'Clean Power for Coprocessors' },
+
+  // CAN & Controllers
+  CANivore: { label: 'CTRE CANivore', category: 'Control & Power', protocol: 'USB to CAN FD', details: 'Secondary CAN FD Bus Adapter' },
+  CANHub: { label: 'WCP CAN Bus Hub', category: 'Control & Power', protocol: 'CAN Splitter', details: 'CAN Bus Distribution Board' },
+  BrushedController: { label: 'Talon SRX / SPARK', category: 'Actuators & Drive', protocol: 'CAN / PWM', details: 'Brushed Motor Controller' },
+
+  // Actuators
+  KrakenX60: { label: 'Kraken X60 Motor', category: 'Actuators & Drive', protocol: 'CAN FD / Talon FX', details: 'Brushless Actuator' },
+  Falcon500: { label: 'Falcon 500 Motor', category: 'Actuators & Drive', protocol: 'CAN / Talon FX', details: 'Integrated Brushless Motor' },
   SparkMaxNEO: { label: 'NEO + SPARK Max', category: 'Actuators & Drive', protocol: 'CAN Bus / PWM', details: 'Brushless Controller' },
+  NEOVortex: { label: 'NEO Vortex + SPARK Flex', category: 'Actuators & Drive', protocol: 'CAN Bus / PWM', details: 'High Output Motor' },
+  NEO550: { label: 'NEO 550 Motor', category: 'Actuators & Drive', protocol: 'CAN Bus / PWM', details: 'Compact Brushless' },
+  PWMServo: { label: 'PWM Servo Motor', category: 'Actuators & Drive', protocol: 'PWM Signal', details: 'Standard Servo' },
+  Compressor: { label: 'Pneumatic Compressor', category: 'Actuators & Drive', protocol: '12V Pneumatic Power', details: 'Air Compressor' },
   SolenoidValve: { label: 'Solenoid Valve', category: 'Actuators & Drive', protocol: 'Pneumatic / 12V', details: 'Pneumatic Actuator' },
-  Limelight: { label: 'Limelight 3/3G', category: 'Sensors & Vision', protocol: 'Ethernet / CAN', details: 'Smart Vision Camera' },
-  CANcoder: { label: 'CTRE CANcoder', category: 'Sensors & Vision', protocol: 'CAN Bus', details: 'Absolute Encoder' },
-  Pigeon2: { label: 'Pigeon 2.0 IMU', category: 'Sensors & Vision', protocol: 'CAN Bus', details: '9-Axis Gyroscope' },
+
+  // Sensors & Vision
+  Limelight: { label: 'Limelight 3/3G', category: 'Sensors & Vision', protocol: 'Ethernet / NetworkTables', details: 'Smart Vision Camera' },
+  PhotonVision: { label: 'PhotonVision Camera', category: 'Sensors & Vision', protocol: 'Ethernet / NetworkTables', details: 'Custom Vision Processor' },
+  CANcoder: { label: 'CTRE CANcoder', category: 'Sensors & Vision', protocol: 'CAN / CAN FD', details: 'Absolute Encoder' },
+  ThroughBore: { label: 'REV Through Bore', category: 'Sensors & Vision', protocol: 'DIO Duty Cycle', details: 'Quadrature Encoder' },
+  Pigeon2: { label: 'Pigeon 2.0 IMU', category: 'Sensors & Vision', protocol: 'CAN / CAN FD', details: '9-Axis Gyroscope' },
+  NavX2: { label: 'navX2-MXP Gyro', category: 'Sensors & Vision', protocol: 'SPI / CAN', details: 'Precision Gyro' },
+  CANdle: { label: 'CTRE CANdle', category: 'Sensors & Vision', protocol: 'CAN Bus / 12V', details: 'LED Driver Controller' },
+  LimitSwitch: { label: 'Limit Switch', category: 'Sensors & Vision', protocol: 'DIO Contact', details: 'Physical Hardstop Sensor' },
+  BeamBreak: { label: 'Beam-Break Sensor', category: 'Sensors & Vision', protocol: 'DIO Optical', details: 'Indexer Game Piece Sensor' },
+  TimeOfFlight: { label: 'LaserCAN / ToF Sensor', category: 'Sensors & Vision', protocol: 'CAN / I2C', details: 'Laser Distance Measurement' },
+  ColorSensor: { label: 'REV Color Sensor V3', category: 'Sensors & Vision', protocol: 'I2C / CAN', details: 'Color & Proximity Sensor' },
+
+  // Coprocessors
   Coprocessor: { label: 'Linux Coprocessor', category: 'Coprocessors', protocol: 'USB / Ethernet', details: 'Orange Pi / Jetson' },
 };
 
@@ -169,10 +208,10 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
     const sourceNode = nodes.find((n) => n.id === connection.source);
     const targetNode = nodes.find((n) => n.id === connection.target);
 
-    // ── 1. Battery Connection to PDH ──
+    // ── 1. Main Power Routing (Battery -> 120A Main Breaker -> PDH) ──
     if (sourceNode?.data?.deviceType === 'Battery12V') {
-      if (targetNode?.data?.deviceType !== 'PDH' || connection.targetHandle !== 'pwr-12v-in') {
-        alert("Battery output must connect directly to the 12V Main Input on the REV PDH.");
+      if (targetNode?.data?.deviceType !== 'MainBreaker120A') {
+        alert("Violates FRC Rules: The 12V Battery MUST connect directly to the 120A Main Circuit Breaker input!");
         return;
       }
 
@@ -182,7 +221,7 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
             ...connection,
             type: 'smoothstep',
             animated: false,
-            label: '12V Main Battery Connection',
+            label: '12V Main Battery Link',
             labelStyle: { fill: '#f8fafc', fontSize: 10, fontWeight: 700, fontFamily: 'monospace' },
             labelBgStyle: { fill: '#0f172a', fillOpacity: 0.9, rx: 4, ry: 4 },
             style: { stroke: '#dc2626', strokeWidth: 4 },
@@ -193,7 +232,94 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
       return;
     }
 
-    // ── 2. PDH Power Outlet Rules ──
+    if (sourceNode?.data?.deviceType === 'MainBreaker120A') {
+      if (targetNode?.data?.deviceType !== 'PDH' || connection.targetHandle !== 'pwr-12v-in') {
+        alert("The 120A Main Breaker output must connect to the REV PDH 12V Main Power Input.");
+        return;
+      }
+
+      set({
+        edges: addEdge(
+          {
+            ...connection,
+            type: 'smoothstep',
+            animated: false,
+            label: 'Protected 120A Bus',
+            labelStyle: { fill: '#f8fafc', fontSize: 10, fontWeight: 700, fontFamily: 'monospace' },
+            labelBgStyle: { fill: '#0f172a', fillOpacity: 0.9, rx: 4, ry: 4 },
+            style: { stroke: '#ef4444', strokeWidth: 4 },
+          },
+          get().edges
+        ),
+      });
+      return;
+    }
+
+    // ── 2. Buck Converter Power Output ──
+    if (sourceNode?.data?.deviceType === 'BuckConverter') {
+      set({
+        edges: addEdge(
+          {
+            ...connection,
+            type: 'smoothstep',
+            animated: false,
+            label: '5V/12V Regulated DC',
+            labelStyle: { fill: '#f8fafc', fontSize: 10, fontWeight: 700, fontFamily: 'monospace' },
+            labelBgStyle: { fill: '#0f172a', fillOpacity: 0.9, rx: 4, ry: 4 },
+            style: { stroke: '#38bdf8', strokeWidth: 2.5 },
+          },
+          get().edges
+        ),
+      });
+      return;
+    }
+
+    // ── 3. RSL (Robot Signal Light) Wiring ──
+    if (sourceNode?.data?.deviceType === 'roboRIO' && connection.sourceHandle === 'rsl-out') {
+      if (targetNode?.data?.deviceType !== 'RSL') {
+        alert("roboRIO RSL header can only connect to the Robot Signal Light (RSL).");
+        return;
+      }
+
+      set({
+        edges: addEdge(
+          {
+            ...connection,
+            type: 'smoothstep',
+            animated: true,
+            label: 'RSL Status Signal',
+            labelStyle: { fill: '#f8fafc', fontSize: 10, fontWeight: 700, fontFamily: 'monospace' },
+            labelBgStyle: { fill: '#0f172a', fillOpacity: 0.9, rx: 4, ry: 4 },
+            style: { stroke: '#facc15', strokeWidth: 2.5 },
+          },
+          get().edges
+        ),
+      });
+      return;
+    }
+
+    // ── 4. CANivore CAN FD Secondary Bus ──
+    if (sourceNode?.data?.deviceType === 'CANivore') {
+      if (connection.sourceHandle === 'can-fd-start') {
+        set({
+          edges: addEdge(
+            {
+              ...connection,
+              type: 'smoothstep',
+              animated: true,
+              label: 'CTRE CAN FD Bus (8Mbps)',
+              labelStyle: { fill: '#f8fafc', fontSize: 10, fontWeight: 700, fontFamily: 'monospace' },
+              labelBgStyle: { fill: '#0f172a', fillOpacity: 0.9, rx: 4, ry: 4 },
+              style: { stroke: '#f59e0b', strokeWidth: 3 },
+            },
+            get().edges
+          ),
+        });
+        return;
+      }
+    }
+
+    // ── 5. PDH Breaker Channel Allocations ──
     const isPdhSource = sourceNode?.data?.deviceType === 'PDH';
     const isTargetPowerIn = connection.targetHandle?.includes('pwr');
 
@@ -201,10 +327,9 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
       const { highMap, lowMap, switchedMap } = getPdhAllocations();
       const isTargetRoboRIO = targetNode?.data?.deviceType === 'roboRIO';
 
-      // Rule: High-Current Ports (0-19)
       if (connection.sourceHandle === 'pwr-high-out') {
         if (isTargetRoboRIO) {
-          alert("Violates FRC Rules: roboRIO cannot run on a high-current breaker port (20A-40A)! Connect it to a 15A Low-Current Port (Ports 20-22).");
+          alert("Violates FRC Rules: roboRIO cannot run on a high-current breaker port (20A-40A)! Connect to a 15A Low-Current Port (Ports 20-22).");
           return;
         }
 
@@ -217,7 +342,7 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
         }
 
         if (nextChan === -1) {
-          alert(`All ${MAX_HIGH_CHANNELS} High-Current Breaker Channels (Ports 0-19) are occupied!`);
+          alert(`All ${MAX_HIGH_CHANNELS} High-Current Channels (Ports 0-19) are occupied!`);
           return;
         }
 
@@ -245,7 +370,6 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
         return;
       }
 
-      // Rule: Low-Current Ports (20-22)
       if (connection.sourceHandle === 'pwr-low-out') {
         let nextChan = -1;
         for (let i = 20; i < 20 + MAX_LOW_CHANNELS; i++) {
@@ -284,7 +408,6 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
         return;
       }
 
-      // Rule: Switchable Low-Current Port (23)
       if (connection.sourceHandle === 'pwr-switched-out') {
         if (isTargetRoboRIO) {
           alert("Violates FRC Rules: roboRIO cannot be plugged into the software-switchable channel!");
@@ -321,34 +444,7 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
       }
     }
 
-    // ── 3. CAN Connection Wiring Rules ──
-    const isCanConnection = connection.sourceHandle?.includes('can') || connection.targetHandle?.includes('can');
-    const isCanTerminationPoint = targetNode?.data?.deviceType === 'PDH' && connection.targetHandle === 'can-term';
-
-    if (isCanConnection) {
-      let label = 'CAN Bus [Loop]';
-      if (connection.sourceHandle === 'can-start') label = 'CAN Bus [RIO Start]';
-      if (isCanTerminationPoint) label = 'CAN Bus [120Ω Terminated]';
-
-      set({
-        edges: addEdge(
-          {
-            ...connection,
-            type: 'smoothstep',
-            animated: true,
-            label,
-            labelStyle: { fill: '#f8fafc', fontSize: 10, fontWeight: 700, fontFamily: 'monospace' },
-            labelBgStyle: { fill: '#0f172a', fillOpacity: 0.9, rx: 4, ry: 4 },
-            style: { stroke: isCanTerminationPoint ? '#f59e0b' : '#eab308', strokeWidth: 2.5 },
-            data: { isCanTerminator: isCanTerminationPoint },
-          },
-          get().edges
-        ),
-      });
-      return;
-    }
-
-    // Default Fallback Wiring
+    // Default Connection Handling
     set({
       edges: addEdge(
         {
@@ -378,7 +474,7 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
       y: 80 + Math.floor(nodeCount / 3) * 230,
     };
 
-    const isController = type === 'roboRIO' || type === 'PDH';
+    const isController = ['roboRIO', 'PDH', 'RadioSwitch', 'MainBreaker120A', 'CANivore', 'PneumaticsHub'].includes(type);
 
     const newNode: Node<FRCNodeData> = {
       id,
@@ -390,7 +486,9 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
         category: config.category,
         protocol: config.protocol,
         details: config.details,
-        canId: type !== 'PDH' && type !== 'roboRIO' && type !== 'Battery12V' ? (nodeCount % 62) + 1 : undefined,
+        canId: !['PDH', 'roboRIO', 'Battery12V', 'MainBreaker120A', 'RadioSwitch', 'RSL', 'PWMServo', 'Compressor', 'LimitSwitch', 'BeamBreak', 'PressureSwitch', 'BuckConverter'].includes(type) ? (nodeCount % 62) + 1 : undefined,
+        dioPort: ['LimitSwitch', 'BeamBreak', 'ThroughBore'].includes(type) ? nodeCount % 10 : undefined,
+        pwmPort: type === 'PWMServo' ? nodeCount % 10 : undefined,
       },
     };
 

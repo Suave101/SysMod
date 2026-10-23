@@ -2,24 +2,27 @@ import { Node, Edge } from '@xyflow/react';
 import { FRCNodeData } from '../store/useRobotStore';
 
 export function generatePythonCode(nodes: Node<FRCNodeData>[], edges: Edge[]): string {
-  const motors = nodes.filter((n) => ['KrakenX60', 'SparkMaxNEO'].includes(n.data?.deviceType || ''));
-  const sensors = nodes.filter((n) => ['CANcoder', 'Pigeon2', 'Limelight'].includes(n.data?.deviceType || ''));
-  const pneumatics = nodes.filter((n) => n.data?.deviceType === 'SolenoidValve');
+  const motors = nodes.filter((n) => ['KrakenX60', 'Falcon500', 'SparkMaxNEO', 'NEOVortex', 'NEO550', 'PWMServo', 'BrushedController'].includes(n.data?.deviceType || ''));
+  const sensors = nodes.filter((n) => ['CANcoder', 'Pigeon2', 'NavX2', 'ThroughBore', 'Limelight', 'PhotonVision', 'LimitSwitch', 'BeamBreak', 'TimeOfFlight', 'ColorSensor'].includes(n.data?.deviceType || ''));
+  const pneumatics = nodes.filter((n) => ['SolenoidValve', 'Compressor', 'PressureSwitch'].includes(n.data?.deviceType || ''));
+  const canivorePresent = nodes.some((n) => n.data?.deviceType === 'CANivore');
 
   let code = `import wpilib
 import wpilib.drive
 import commands2
 `;
 
-  // Dynamic Imports based on Hardware
-  if (nodes.some((n) => n.data?.deviceType === 'KrakenX60')) {
+  if (nodes.some((n) => ['KrakenX60', 'Falcon500', 'Pigeon2', 'CANcoder'].includes(n.data?.deviceType || ''))) {
     code += `import phoenix6\n`;
   }
-  if (nodes.some((n) => n.data?.deviceType === 'SparkMaxNEO')) {
+  if (nodes.some((n) => ['SparkMaxNEO', 'NEO550', 'NEOVortex', 'BrushedController'].includes(n.data?.deviceType || ''))) {
     code += `import rev\n`;
   }
-  if (nodes.some((n) => n.data?.deviceType === 'Pigeon2' || n.data?.deviceType === 'CANcoder')) {
-    if (!code.includes('phoenix6')) code += `import phoenix6\n`;
+  if (nodes.some((n) => n.data?.deviceType === 'PhotonVision')) {
+    code += `import photonlibpy\nimport photonlibpy.photonCamera\n`;
+  }
+  if (nodes.some((n) => n.data?.deviceType === 'NavX2')) {
+    code += `import navx\n`;
   }
   if (nodes.some((n) => n.data?.deviceType === 'Limelight')) {
     code += `from ntcore import NetworkTableInstance\n`;
@@ -29,63 +32,80 @@ import commands2
   code += `    def robotInit(self):\n`;
   code += `        """Initialize robot hardware from SysMod Architecture."""\n`;
 
-  // Initialize Motors
+  const busArg = canivorePresent ? `, "canivore"` : '';
+
+  // Actuators Code
   if (motors.length > 0) {
-    code += `        # ── Actuators & Drive Motors ──\n`;
+    code += `        # ── Motor Actuators & Drive Controllers ──\n`;
     motors.forEach((m) => {
       const varName = m.id;
       const canId = m.data?.canId || 1;
-      if (m.data?.deviceType === 'KrakenX60') {
-        code += `        self.${varName} = phoenix6.hardware.TalonFX(${canId})\n`;
-      } else if (m.data?.deviceType === 'SparkMaxNEO') {
+      const pwmPort = m.data?.pwmPort || 0;
+      const dev = m.data?.deviceType;
+
+      if (dev === 'KrakenX60' || dev === 'Falcon500') {
+        code += `        self.${varName} = phoenix6.hardware.TalonFX(${canId}${busArg})\n`;
+      } else if (dev === 'SparkMaxNEO' || dev === 'NEO550' || dev === 'BrushedController') {
         code += `        self.${varName} = rev.CANSparkMax(${canId}, rev.CANSparkLowLevel.MotorType.kBrushless)\n`;
+      } else if (dev === 'NEOVortex') {
+        code += `        self.${varName} = rev.CANSparkFlex(${canId}, rev.CANSparkLowLevel.MotorType.kBrushless)\n`;
+      } else if (dev === 'PWMServo') {
+        code += `        self.${varName} = wpilib.Servo(${pwmPort})\n`;
       }
     });
   }
 
-  // Initialize Sensors & Vision
+  // Sensors & Game Piece Detection Code
   if (sensors.length > 0) {
-    code += `\n        # ── Sensors & Vision Systems ──\n`;
+    code += `\n        # ── Sensors & Game Piece Detection ──\n`;
     sensors.forEach((s) => {
       const varName = s.id;
       const canId = s.data?.canId || 1;
-      if (s.data?.deviceType === 'CANcoder') {
-        code += `        self.${varName} = phoenix6.hardware.CANcoder(${canId})\n`;
-      } else if (s.data?.deviceType === 'Pigeon2') {
-        code += `        self.${varName} = phoenix6.hardware.Pigeon2(${canId})\n`;
-      } else if (s.data?.deviceType === 'Limelight') {
+      const dioPort = s.data?.dioPort || 0;
+      const dev = s.data?.deviceType;
+
+      if (dev === 'CANcoder') {
+        code += `        self.${varName} = phoenix6.hardware.CANcoder(${canId}${busArg})\n`;
+      } else if (dev === 'Pigeon2') {
+        code += `        self.${varName} = phoenix6.hardware.Pigeon2(${canId}${busArg})\n`;
+      } else if (dev === 'NavX2') {
+        code += `        self.${varName} = navx.AHRS.create_spi()\n`;
+      } else if (dev === 'ThroughBore') {
+        code += `        self.${varName} = wpilib.DutyCycleEncoder(${dioPort})\n`;
+      } else if (dev === 'LimitSwitch' || dev === 'BeamBreak') {
+        code += `        self.${varName} = wpilib.DigitalInput(${dioPort})\n`;
+      } else if (dev === 'PhotonVision') {
+        code += `        self.${varName} = photonlibpy.photonCamera.PhotonCamera("photonvision")\n`;
+      } else if (dev === 'Limelight') {
         code += `        self.limelight_table = NetworkTableInstance.getDefault().getTable("limelight")\n`;
       }
     });
   }
 
-  // Initialize Pneumatics
+  // Pneumatics System
   if (pneumatics.length > 0) {
-    code += `\n        # ── Pneumatics ──\n`;
+    code += `\n        # ── Pneumatic Control System ──\n`;
+    code += `        self.ph = wpilib.PneumaticsHub()\n`;
     pneumatics.forEach((p, idx) => {
-      code += `        self.${p.id} = wpilib.Solenoid(wpilib.PneumaticsModuleType.REVPH, ${idx})\n`;
+      if (p.data?.deviceType === 'Compressor') {
+        code += `        self.compressor = self.ph.makeCompressor()\n`;
+        code += `        self.compressor.enableAnalog(100.0, 120.0)\n`;
+      } else if (p.data?.deviceType === 'SolenoidValve') {
+        code += `        self.${p.id} = self.ph.makeSolenoid(${idx})\n`;
+      }
     });
   }
 
   code += `\n    def robotPeriodic(self):\n`;
   if (nodes.some((n) => n.data?.deviceType === 'Limelight')) {
-    code += `        # Fetch Limelight Target Tracking Values\n`;
     code += `        tx = self.limelight_table.getNumber("tx", 0.0)\n`;
-    code += `        tv = self.limelight_table.getNumber("tv", 0.0)\n`;
     code += `        wpilib.SmartDashboard.putNumber("LimelightTX", tx)\n`;
-    code += `        wpilib.SmartDashboard.putBoolean("LimelightTarget", tv == 1.0)\n`;
   } else {
     code += `        pass\n`;
   }
 
-  code += `\n    def autonomousInit(self):\n`;
-  code += `        pass\n\n`;
-  code += `    def teleopInit(self):\n`;
-  code += `        pass\n\n`;
-  code += `    def teleopPeriodic(self):\n`;
-  code += `        pass\n\n`;
-  code += `if __name__ == "__main__":\n`;
-  code += `    wpilib.run(MyRobot)\n`;
+  code += `\n    def teleopPeriodic(self):\n        pass\n\n`;
+  code += `if __name__ == "__main__":\n    wpilib.run(MyRobot)\n`;
 
   return code;
 }
