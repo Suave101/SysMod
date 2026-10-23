@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Trash2, Plus, DollarSign } from 'lucide-react';
+import ProcessTimeline from './components/ProcessTimeline';
 
 interface WeightedCriterion {
   id: string;
@@ -177,7 +178,8 @@ export default function Brainstorming() {
   const limitNum = parseFloat(spendingLimit) || 0;
 
   return (
-    <div className="fixed inset-0 overflow-y-auto bg-[#0a0d14] text-slate-100 font-sans p-10 scroll-smooth">
+    <div className="fixed inset-0 overflow-y-auto bg-[#0a0d14] text-slate-100 font-sans px-6 sm:px-8 lg:px-12 pt-2 pb-10 scroll-smooth [scrollbar-gutter:stable]">
+      <ProcessTimeline currentStep="decision-matrix" />
       <header className="max-w-[1500px] mx-auto mb-8 border-b border-slate-800 pb-6 flex justify-between items-end">
         <div>
           <span className="bg-emerald-500/20 text-emerald-400 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider mb-2 inline-block">

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom'; // Or your chosen Electron router hook
+import ProcessTimeline from './components/ProcessTimeline';
 
 export default function DesignBrief() {
   const navigate = useNavigate();
@@ -120,7 +121,8 @@ export default function DesignBrief() {
   };
 
   return (
-    <div className="fixed inset-0 overflow-y-auto bg-slate-950 text-slate-100 font-sans p-6 sm:p-8 lg:p-12 scroll-smooth">
+    <div className="fixed inset-0 overflow-y-auto bg-slate-950 text-slate-100 font-sans px-6 sm:px-8 lg:px-12 pt-2 pb-6 sm:pb-8 lg:pb-12 scroll-smooth [scrollbar-gutter:stable]">
+      <ProcessTimeline currentStep="design-brief" />
       <div className="max-w-[1500px] mx-auto mb-8 border-b border-indigo-500/20 pb-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { Plus, GripVertical, AlertTriangle, ArrowRight, ArrowLeft } from 'lucide-react';
+import ProcessTimeline from './components/ProcessTimeline';
 
 type Task = { id: string; content: string };
 type Columns = {
@@ -135,7 +136,8 @@ export default function Moscow() {
   };
 
   return (
-    <div className="h-screen w-full bg-[#0a0d14] text-slate-300 p-10 flex flex-col font-sans overflow-hidden">
+    <div className="h-screen w-full bg-[#0a0d14] text-slate-300 px-6 sm:px-8 lg:px-12 pt-2 pb-10 flex flex-col font-sans overflow-hidden [scrollbar-gutter:stable]">
+      <ProcessTimeline currentStep="moscow" />
       <header className="border-b border-slate-800/60 pb-6 mb-8 shrink-0 flex justify-between items-end">
         <div>
           <span className="bg-emerald-500/20 text-emerald-400 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider mb-2 inline-block">
