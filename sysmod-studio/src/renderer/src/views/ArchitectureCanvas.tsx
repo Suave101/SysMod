@@ -1,9 +1,12 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ReactFlow, Background, Controls, NodeTypes } from '@xyflow/react';
-import { useRobotStore } from './store/useRobotStore';
+import { useRobotStore, WIRE_STYLES, PortType } from './store/useRobotStore';
 import { ControlHubNode } from './components/ControlHubNode';
+import { StandardNode } from './components/StandardNode';
 import { CodeViewerModal } from './components/CodeViewerModal';
+import { PriceEditorModal } from './components/PriceEditorModal';
 import { generateJavaCode, generateAadlCode } from './utils/codeGenerators';
+import { useNavigate } from 'react-router-dom';
 import { 
   Cpu, 
   Plus, 
@@ -17,46 +20,38 @@ import {
   Server, 
   ArrowLeft, 
   Save,
-  ShieldAlert,
   Gauge,
   Wind,
   Radio,
-  Activity
+  Activity,
+  LucideIcon
 } from 'lucide-react';
 import '@xyflow/react/dist/style.css';
-import { StandardNode } from './components/StandardNode';
-import { useNavigate } from 'react-router-dom';
-import { PriceEditorModal } from './components/PriceEditorModal';
 
 const proOptions = { hideAttribution: true };
 
-// Helper to resolve node hardware pricing key
-const getHardwareType = (node: any, deviceCosts: Record<string, number>): string => {
-  if (node.type && deviceCosts[node.type] !== undefined) {
-    return node.type;
-  }
-  
-  const dataProps = ['type', 'deviceType', 'hardwareType', 'subType', 'kind'];
-  for (const prop of dataProps) {
-    const val = node.data?.[prop];
-    if (val && deviceCosts[val] !== undefined) {
-      return val;
-    }
-  }
+export interface HardwareItemConfig {
+  id: string;
+  label: string;
+  defaultCost: number;
+  category: 'Control & Power' | 'Actuators & Drive' | 'Sensors & Vision' | 'Coprocessors';
+  icon: LucideIcon;
+  borderColor: string;
+  iconColor: string;
+}
 
-  const label = node.data?.label;
-  if (typeof label === 'string') {
-    const cleanLabel = label.toLowerCase().replace(/[^a-z0-9]/g, '');
-    for (const key of Object.keys(deviceCosts)) {
-      const cleanKey = key.toLowerCase();
-      if (cleanLabel.includes(cleanKey) || cleanKey.includes(cleanLabel)) {
-        return key;
-      }
-    }
-  }
-
-  return '';
-};
+export const FRC_HARDWARE_CATALOG: HardwareItemConfig[] = [
+  { id: 'roboRIO', label: 'roboRIO 2.0', defaultCost: 450.00, category: 'Control & Power', icon: Cpu, borderColor: 'border-indigo-500/30', iconColor: 'text-indigo-400' },
+  { id: 'PDH', label: 'REV PDH (20 Ch)', defaultCost: 240.00, category: 'Control & Power', icon: Zap, borderColor: 'border-amber-500/30', iconColor: 'text-amber-500' },
+  { id: 'PneumaticsHub', label: 'Pneumatics Hub', defaultCost: 120.00, category: 'Control & Power', icon: Wind, borderColor: 'border-sky-500/30', iconColor: 'text-sky-400' },
+  { id: 'KrakenX60', label: 'Kraken X60 Motor', defaultCost: 180.00, category: 'Actuators & Drive', icon: Activity, borderColor: 'border-emerald-500/30', iconColor: 'text-emerald-400' },
+  { id: 'SparkMaxNEO', label: 'NEO + SPARK Max', defaultCost: 125.00, category: 'Actuators & Drive', icon: Zap, borderColor: 'border-orange-500/30', iconColor: 'text-orange-400' },
+  { id: 'SolenoidValve', label: 'Solenoid Valve', defaultCost: 45.00, category: 'Actuators & Drive', icon: Wind, borderColor: 'border-cyan-500/30', iconColor: 'text-cyan-400' },
+  { id: 'Limelight', label: 'Limelight 3/3G', defaultCost: 400.00, category: 'Sensors & Vision', icon: Camera, borderColor: 'border-lime-500/30', iconColor: 'text-lime-400' },
+  { id: 'CANcoder', label: 'CTRE CANcoder', defaultCost: 65.00, category: 'Sensors & Vision', icon: Gauge, borderColor: 'border-purple-500/30', iconColor: 'text-purple-400' },
+  { id: 'Pigeon2', label: 'Pigeon 2.0 IMU', defaultCost: 199.00, category: 'Sensors & Vision', icon: Radio, borderColor: 'border-rose-500/30', iconColor: 'text-rose-400' },
+  { id: 'Coprocessor', label: 'Orange Pi / Jetson', defaultCost: 120.00, category: 'Coprocessors', icon: Server, borderColor: 'border-indigo-500/30', iconColor: 'text-indigo-400' }
+];
 
 export default function App(): React.JSX.Element {
   const navigate = useNavigate();
@@ -68,146 +63,16 @@ export default function App(): React.JSX.Element {
     onEdgesChange, 
     onConnect, 
     addDevice, 
-    clearWorkspace,
-    setNodes,
-    setEdges 
+    clearWorkspace 
   } = useRobotStore();
 
-  // FRC Standard Hardware Hardware Price Registry
   const [deviceCosts, setDeviceCosts] = useState<Record<string, number>>({
-    roboRIO: 450.00,
-    PDH: 240.00,
-    PneumaticsHub: 120.00,
-    KrakenX60: 180.00,
-    SparkMaxNEO: 125.00,
-    SolenoidValve: 45.00,
-    CANcoder: 65.00,
-    Limelight: 400.00,
-    Pigeon2: 199.00,
-    Coprocessor: 120.00,
-  });
-  
-  const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
-
-  // Custom UI Alert State for FRC Budget Limit Warnings
-  const [budgetViolation, setBudgetViolation] = useState<{
-    isOpen: boolean;
-    deviceName: string;
-    deviceCost: number;
-    projectedTotal: number;
-    limit: number;
-  }>({
-    isOpen: false,
-    deviceName: '',
-    deviceCost: 0,
-    projectedTotal: 0,
-    limit: 0
+    roboRIO: 450, PDH: 240, PneumaticsHub: 120, KrakenX60: 180, SparkMaxNEO: 125, SolenoidValve: 45, Limelight: 400, CANcoder: 65, Pigeon2: 199, Coprocessor: 120
   });
 
-  const [spendingLimit, setSpendingLimit] = useState<number>(0);
   const [isCodeModalOpen, setIsCodeModalOpen] = useState(false);
   const [modalAadl, setModalAadl] = useState('');
   const [modalJava, setModalJava] = useState('');
-
-  // Hydrate Canvas & Budget from Workspace JSON on Mount
-  useEffect(() => {
-    const loadSavedWorkspace = async () => {
-      let savedData: any = null;
-      if (window.electronAPI && window.electronAPI.loadData) {
-        savedData = await window.electronAPI.loadData();
-      } else {
-        const local = localStorage.getItem('workspace-data');
-        if (local) savedData = JSON.parse(local);
-      }
-
-      if (savedData) {
-        if (savedData.deviceCosts) {
-          setDeviceCosts(savedData.deviceCosts);
-        }
-        if (savedData.nodes && typeof setNodes === 'function') {
-          setNodes(savedData.nodes);
-        }
-        if (savedData.edges && typeof setEdges === 'function') {
-          setEdges(savedData.edges);
-        }
-        if (savedData.spendingLimit) {
-          setSpendingLimit(parseFloat(savedData.spendingLimit) || 0);
-        }
-      }
-    };
-
-    loadSavedWorkspace();
-  }, [setNodes, setEdges]);
-
-  // Calculate Current Canvas Total Hardware Cost
-  const currentTotalCost = useMemo(() => {
-    return nodes.reduce((total, node) => {
-      const type = getHardwareType(node, deviceCosts);
-      const cost = deviceCosts[type] || 0;
-      return total + cost;
-    }, 0);
-  }, [nodes, deviceCosts]);
-
-  // Intercept & Validate Device Addition (Budget Guard)
-  const handleAddDevice = (type: string) => {
-    const cost = deviceCosts[type] || 0;
-    
-    if (spendingLimit > 0 && (currentTotalCost + cost) > spendingLimit) {
-      setBudgetViolation({
-        isOpen: true,
-        deviceName: type,
-        deviceCost: cost,
-        projectedTotal: currentTotalCost + cost,
-        limit: spendingLimit
-      });
-      return;
-    }
-    
-    addDevice(type);
-  };
-
-  const saveWorkspaceData = async (
-    currentNodes = nodes, 
-    currentEdges = edges, 
-    currentCosts = deviceCosts
-  ) => {
-    let existingData: any = {};
-    if (window.electronAPI && window.electronAPI.loadData) {
-      existingData = await window.electronAPI.loadData() || {};
-    } else {
-      const local = localStorage.getItem('workspace-data');
-      if (local) existingData = JSON.parse(local);
-    }
-
-    const payload = {
-      ...existingData,
-      nodes: currentNodes,
-      edges: currentEdges,
-      deviceCosts: currentCosts
-    };
-
-    if (window.electronAPI && window.electronAPI.saveData) {
-      await window.electronAPI.saveData(payload);
-    } else {
-      localStorage.setItem('workspace-data', JSON.stringify(payload));
-    }
-  };
-
-  useEffect(() => {
-    if (nodes.length > 0 || edges.length > 0) {
-      saveWorkspaceData(nodes, edges, deviceCosts);
-    }
-  }, [nodes, edges, deviceCosts]);
-
-  const handleBackToBrainstorming = async () => {
-    await saveWorkspaceData(nodes, edges, deviceCosts);
-    navigate('/brainstorming');
-  };
-
-  const handleManualSave = async () => {
-    await saveWorkspaceData(nodes, edges, deviceCosts);
-    alert('FRC Architecture configuration saved successfully to JSON workspace!');
-  };
 
   const nodeTypes = useMemo<NodeTypes>(() => ({
     ControlHub: ControlHubNode,
@@ -220,22 +85,9 @@ export default function App(): React.JSX.Element {
     setIsCodeModalOpen(true);
   };
 
-  const handleExportHardwareCode = async (): Promise<void> => {
-    const code = generateJavaCode(nodes, edges);
-    try {
-      const response = await window.sysmodAPI.saveJavaFile(code);
-      if (response.success && response.filePath) {
-        alert(`WPILib Robot Configuration saved successfully to:\n${response.filePath}`);
-      }
-    } catch (error) {
-      console.error('IPC IO failure:', error);
-      alert('Critical Error: Failed to write WPILib file payload over native runtime bridge.');
-    }
-  };
-
   return (
     <div className="flex w-screen h-screen bg-slate-950 text-slate-100 overflow-hidden">
-      {/* Sidebar Interface Components */}
+      {/* Sidebar Controls */}
       <aside className="w-80 border-r border-slate-800 bg-slate-900 flex flex-col justify-between z-10 shadow-2xl">
         <div className="p-4 space-y-5 overflow-y-auto max-h-[calc(100vh-160px)]">
           <div className="flex items-center gap-2 pb-4 border-b border-slate-800">
@@ -246,221 +98,61 @@ export default function App(): React.JSX.Element {
             </div>
           </div>
 
-          {/* Navigation & Multi-Page Sync Buttons */}
-          <div className="grid grid-cols-2 gap-2 pb-2">
-            <button
-              onClick={handleBackToBrainstorming}
-              className="flex items-center justify-center gap-1.5 py-2 px-3 rounded bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-[11px] font-mono font-bold transition text-slate-300"
-            >
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => navigate('/brainstorming')} className="py-2 px-3 rounded bg-slate-950 border border-slate-800 text-[11px] font-mono font-bold text-slate-300 flex items-center justify-center gap-1">
               <ArrowLeft className="w-3.5 h-3.5" /> Back
             </button>
-            <button
-              onClick={handleManualSave}
-              className="flex items-center justify-center gap-1.5 py-2 px-3 rounded bg-indigo-950/40 hover:bg-indigo-900/60 border border-indigo-500/30 hover:border-indigo-500/50 text-[11px] font-mono font-bold transition text-indigo-300"
-            >
+            <button onClick={() => alert('Workspace JSON Saved')} className="py-2 px-3 rounded bg-indigo-950/40 border border-indigo-500/30 text-[11px] font-mono font-bold text-indigo-300 flex items-center justify-center gap-1">
               <Save className="w-3.5 h-3.5" /> Save JSON
             </button>
           </div>
 
-          <button
-            onClick={() => setIsPriceModalOpen(true)}
-            className="w-full py-2 px-3 rounded bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-[11px] font-mono font-bold transition text-slate-300 flex items-center justify-center gap-1.5"
-          >
-            <Settings className="w-3.5 h-3.5 text-slate-400" /> Configure Unit Costs
-          </button>
-
-          {/* Budget Widget */}
-          {spendingLimit > 0 && (
-            <div className="bg-slate-950 p-4 rounded-lg border border-slate-800/80 space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest">FRC BOM Margin</span>
-                <span className={`text-xs font-mono font-bold ${currentTotalCost > spendingLimit ? 'text-red-400' : 'text-emerald-400'}`}>
-                  ${currentTotalCost.toFixed(2)} / ${spendingLimit.toFixed(2)}
-                </span>
-              </div>
-              
-              <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden">
-                <div 
-                  className={`h-1.5 rounded-full transition-all duration-300 ${
-                    (currentTotalCost / spendingLimit) > 0.9 
-                      ? 'bg-red-500' 
-                      : (currentTotalCost / spendingLimit) > 0.7 
-                      ? 'bg-amber-500' 
-                      : 'bg-emerald-500'
-                  }`}
-                  style={{ width: `${Math.min((currentTotalCost / spendingLimit) * 100, 100)}%` }}
-                />
-              </div>
-              
-              <div className="flex justify-between text-[10px] font-mono text-slate-500">
-                <span>Remaining:</span>
-                <span className={(spendingLimit - currentTotalCost) < 100 ? 'text-amber-400 font-bold' : 'text-slate-300'}>
-                  ${(spendingLimit - currentTotalCost).toFixed(2)}
-                </span>
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-3 border-t border-slate-800/80 pt-4">
-            <h2 className="text-xs font-mono uppercase tracking-wider text-slate-400 px-1">FRC Hardware Components</h2>
-            <div className="space-y-2">
-
-              {/* ── Control & Power ── */}
-              <p className="text-[9px] font-mono text-indigo-400 uppercase tracking-widest px-1 pt-1 font-bold">Control &amp; Power</p>
-              
-              <button
-                onClick={() => handleAddDevice('roboRIO')}
-                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-indigo-500/30 text-left transition duration-150 group"
-              >
-                <div className="flex items-center gap-2">
-                  <Cpu className="w-4 h-4 text-indigo-400" />
-                  <span className="text-xs font-mono text-slate-300">roboRIO 2.0 (${(deviceCosts.roboRIO || 0).toFixed(2)})</span>
-                </div>
-                <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-400 transition" />
-              </button>
-
-              <button
-                onClick={() => handleAddDevice('PDH')}
-                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-amber-500/30 text-left transition duration-150 group"
-              >
-                <div className="flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-amber-500" />
-                  <span className="text-xs font-mono text-slate-300">REV PDH (20 Ch) (${(deviceCosts.PDH || 0).toFixed(2)})</span>
-                </div>
-                <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-amber-500 transition" />
-              </button>
-
-              <button
-                onClick={() => handleAddDevice('PneumaticsHub')}
-                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-sky-500/30 text-left transition duration-150 group"
-              >
-                <div className="flex items-center gap-2">
-                  <Wind className="w-4 h-4 text-sky-400" />
-                  <span className="text-xs font-mono text-slate-300">Pneumatics Hub (${(deviceCosts.PneumaticsHub || 0).toFixed(2)})</span>
-                </div>
-                <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-sky-400 transition" />
-              </button>
-
-              {/* ── Motors & Actuators ── */}
-              <p className="text-[9px] font-mono text-indigo-400 uppercase tracking-widest px-1 pt-1 font-bold">Actuators &amp; Drive</p>
-              
-              <button
-                onClick={() => handleAddDevice('KrakenX60')}
-                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-emerald-500/30 text-left transition duration-150 group"
-              >
-                <div className="flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-emerald-400" />
-                  <span className="text-xs font-mono text-slate-300">Kraken X60 / Talon FX (${(deviceCosts.KrakenX60 || 0).toFixed(2)})</span>
-                </div>
-                <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-emerald-400 transition" />
-              </button>
-
-              <button
-                onClick={() => handleAddDevice('SparkMaxNEO')}
-                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-orange-500/30 text-left transition duration-150 group"
-              >
-                <div className="flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-orange-400" />
-                  <span className="text-xs font-mono text-slate-300">NEO Motor + SPARK Max (${(deviceCosts.SparkMaxNEO || 0).toFixed(2)})</span>
-                </div>
-                <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-orange-400 transition" />
-              </button>
-
-              <button
-                onClick={() => handleAddDevice('SolenoidValve')}
-                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-cyan-500/30 text-left transition duration-150 group"
-              >
-                <div className="flex items-center gap-2">
-                  <Wind className="w-4 h-4 text-cyan-400" />
-                  <span className="text-xs font-mono text-slate-300">Solenoid Valve Solenoid (${(deviceCosts.SolenoidValve || 0).toFixed(2)})</span>
-                </div>
-                <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-cyan-400 transition" />
-              </button>
-
-              {/* ── Sensors & Vision ── */}
-              <p className="text-[9px] font-mono text-indigo-400 uppercase tracking-widest px-1 pt-1 font-bold">Sensors &amp; Vision</p>
-              
-              <button
-                onClick={() => handleAddDevice('Limelight')}
-                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-lime-500/30 text-left transition duration-150 group"
-              >
-                <div className="flex items-center gap-2">
-                  <Camera className="w-4 h-4 text-lime-400" />
-                  <span className="text-xs font-mono text-slate-300">Limelight 3/3G Vision (${(deviceCosts.Limelight || 0).toFixed(2)})</span>
-                </div>
-                <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-lime-400 transition" />
-              </button>
-
-              <button
-                onClick={() => handleAddDevice('CANcoder')}
-                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-purple-500/30 text-left transition duration-150 group"
-              >
-                <div className="flex items-center gap-2">
-                  <Gauge className="w-4 h-4 text-purple-400" />
-                  <span className="text-xs font-mono text-slate-300">CTRE CANcoder (${(deviceCosts.CANcoder || 0).toFixed(2)})</span>
-                </div>
-                <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-purple-400 transition" />
-              </button>
-
-              <button
-                onClick={() => handleAddDevice('Pigeon2')}
-                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-rose-500/30 text-left transition duration-150 group"
-              >
-                <div className="flex items-center gap-2">
-                  <Radio className="w-4 h-4 text-rose-400" />
-                  <span className="text-xs font-mono text-slate-300">Pigeon 2.0 IMU Gyro (${(deviceCosts.Pigeon2 || 0).toFixed(2)})</span>
-                </div>
-                <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-rose-400 transition" />
-              </button>
-
-              {/* ── Compute ── */}
-              <p className="text-[9px] font-mono text-indigo-400 uppercase tracking-widest px-1 pt-1 font-bold">Coprocessors</p>
-              
-              <button
-                onClick={() => handleAddDevice('Coprocessor')}
-                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-indigo-500/30 text-left transition duration-150 group"
-              >
-                <div className="flex items-center gap-2">
-                  <Server className="w-4 h-4 text-indigo-400" />
-                  <span className="text-xs font-mono text-slate-300">Orange Pi / Jetson (${(deviceCosts.Coprocessor || 0).toFixed(2)})</span>
-                </div>
-                <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-400 transition" />
-              </button>
-
-            </div>
+          <div className="space-y-4 border-t border-slate-800/80 pt-4">
+            <h2 className="text-xs font-mono uppercase tracking-wider text-slate-400 px-1">FRC Hardware Component Palette</h2>
+            {FRC_HARDWARE_CATALOG.map((item) => {
+              const ItemIcon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => addDevice(item.id)}
+                  className={`w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border ${item.borderColor} text-left transition group`}
+                >
+                  <div className="flex items-center gap-2">
+                    <ItemIcon className={`w-4 h-4 ${item.iconColor}`} />
+                    <span className="text-xs font-mono text-slate-300">{item.label}</span>
+                  </div>
+                  <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-400 transition" />
+                </button>
+              );
+            })}
           </div>
         </div>
 
         <div className="p-4 border-t border-slate-800 flex flex-col gap-3 bg-slate-950/40">
-          <button 
-            onClick={clearWorkspace}
-            className="w-full mb-1 py-2 px-3 rounded flex items-center justify-center gap-2 text-xs font-mono bg-slate-900 border border-red-500/20 hover:border-red-500/50 text-red-400 transition"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            Clear Canvas
+          <button onClick={clearWorkspace} className="w-full py-2 px-3 rounded flex items-center justify-center gap-2 text-xs font-mono bg-slate-900 border border-red-500/20 text-red-400 hover:border-red-500/50 transition">
+            <Trash2 className="w-3.5 h-3.5" /> Clear Canvas
           </button>
-
-          <button
-            onClick={handleViewCode}
-            className="w-full py-2.5 px-3 rounded flex items-center justify-center gap-2 text-xs font-mono bg-slate-900 border border-indigo-500/30 hover:border-indigo-400/60 text-indigo-400 hover:text-indigo-300 transition"
-          >
-            <Eye className="w-3.5 h-3.5" />
-            Preview WPILib / Java Code
-          </button>
-
-          <button 
-            onClick={handleExportHardwareCode}
-            disabled={nodes.length === 0}
-            className="w-full py-3 px-4 rounded flex items-center justify-center gap-2 text-sm font-mono bg-indigo-600 text-white font-bold hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 disabled:border-transparent transition shadow-lg shadow-indigo-600/20"
-          >
-            <FileCode className="w-4 h-4" />
-            Export WPILib Robot Code
+          <button onClick={handleViewCode} className="w-full py-2.5 px-3 rounded flex items-center justify-center gap-2 text-xs font-mono bg-slate-900 border border-indigo-500/30 text-indigo-400 hover:text-indigo-300 transition">
+            <Eye className="w-3.5 h-3.5" /> Preview Code
           </button>
         </div>
       </aside>
 
-      {/* Main Canvas Workspace Viewport */}
+      {/* Main Workspace Viewport */}
       <main className="flex-1 h-full relative bg-slate-950">
+        {/* Connection Protocol Legend Bar */}
+        <div className="absolute top-4 right-4 z-20 bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-xl p-3 shadow-2xl flex items-center gap-4 text-xs font-mono">
+          <span className="text-slate-400 font-bold uppercase text-[10px] tracking-wider border-r border-slate-800 pr-3">
+            Wiring Standards:
+          </span>
+          {Object.entries(WIRE_STYLES).map(([type, style]) => (
+            <div key={type} className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: style.color }} />
+              <span className="text-slate-300 text-[11px]">{style.label}</span>
+            </div>
+          ))}
+        </div>
+
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -482,108 +174,6 @@ export default function App(): React.JSX.Element {
         aadlCode={modalAadl}
         javaCode={modalJava}
       />
-
-      <PriceEditorModal
-        isOpen={isPriceModalOpen}
-        onClose={() => setIsPriceModalOpen(false)}
-        deviceCosts={deviceCosts}
-        onSave={(updatedCosts) => {
-          setDeviceCosts(updatedCosts);
-          saveWorkspaceData(nodes, edges, updatedCosts);
-        }}
-      />
-
-      {/* Budget Limit Exceeded Modal */}
-      {budgetViolation.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div 
-            className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity duration-300" 
-            onClick={() => setBudgetViolation(prev => ({ ...prev, isOpen: false }))}
-          />
-
-          <div className="relative w-full max-w-md bg-slate-900 border border-red-500/30 rounded-2xl shadow-2xl shadow-red-950/20 overflow-hidden z-10 flex flex-col transform transition-all duration-300 scale-100">
-            <div className="h-1 bg-gradient-to-r from-red-500 via-amber-500 to-red-500" />
-            
-            <div className="p-6 flex flex-col items-center text-center">
-              <div className="w-14 h-14 rounded-full bg-red-950/40 border border-red-500/20 flex items-center justify-center mb-4 text-red-500 shadow-lg shadow-red-950/30 animate-pulse">
-                <ShieldAlert className="w-7 h-7" />
-              </div>
-
-              <h3 className="text-sm font-mono font-bold uppercase tracking-widest text-red-400">
-                FRC Budget Limit Exceeded
-              </h3>
-              <p className="text-xs text-slate-400 mt-1 max-w-xs font-sans">
-                Adding this FRC hardware unit exceeds your project spending limit boundary.
-              </p>
-
-              <div className="w-full mt-6 bg-slate-950/80 rounded-xl border border-slate-800/80 p-4 space-y-3.5">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-slate-400">Attempted Component</span>
-                  <span className="font-mono font-bold text-slate-200">
-                    {budgetViolation.deviceName} (+${budgetViolation.deviceCost.toFixed(2)})
-                  </span>
-                </div>
-
-                <hr className="border-slate-800/60" />
-
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-500">Current Canvas Total</span>
-                    <span className="font-mono text-slate-400">${currentTotalCost.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-500">Projected Build Cost</span>
-                    <span className="font-mono text-red-400 font-semibold">${budgetViolation.projectedTotal.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-500">Workspace Budget Limit</span>
-                    <span className="font-mono text-emerald-400 font-semibold">${budgetViolation.limit.toFixed(2)}</span>
-                  </div>
-                </div>
-
-                <div className="pt-2">
-                  <div className="relative w-full h-1 bg-slate-900 rounded-full overflow-hidden">
-                    <div 
-                      className="absolute left-0 top-0 h-full bg-emerald-500" 
-                      style={{ width: `${Math.min((currentTotalCost / budgetViolation.limit) * 100, 100)}%` }}
-                    />
-                    <div 
-                      className="absolute left-0 top-0 h-full bg-red-500" 
-                      style={{ 
-                        left: `${Math.min((currentTotalCost / budgetViolation.limit) * 100, 100)}%`, 
-                        width: `${Math.max(0, Math.min(((budgetViolation.projectedTotal - currentTotalCost) / budgetViolation.limit) * 100, 100 - (currentTotalCost / budgetViolation.limit) * 100))}%` 
-                      }}
-                    />
-                  </div>
-                  <div className="flex justify-end text-[9px] font-mono text-red-400/90 mt-1.5">
-                    Overage Margin: +${(budgetViolation.projectedTotal - budgetViolation.limit).toFixed(2)}
-                  </div>
-                </div>
-              </div>
-
-              <div className="w-full mt-6 grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBudgetViolation(prev => ({ ...prev, isOpen: false }));
-                    setIsPriceModalOpen(true);
-                  }}
-                  className="py-2.5 px-4 rounded-xl border border-slate-800 hover:border-slate-700 bg-slate-950 text-slate-400 hover:text-slate-200 font-mono text-[10px] font-bold transition duration-150"
-                >
-                  Adjust Unit Costs
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBudgetViolation(prev => ({ ...prev, isOpen: false }))}
-                  className="py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-500 text-white font-mono text-[10px] font-bold shadow-lg shadow-red-600/10 hover:shadow-red-600/20 transition duration-150"
-                >
-                  Acknowledge Warning
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

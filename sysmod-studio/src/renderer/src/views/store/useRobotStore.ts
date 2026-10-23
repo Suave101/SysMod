@@ -1,268 +1,163 @@
 import { create } from 'zustand';
-import { Connection, Edge, Node, addEdge, OnNodesChange, OnEdgesChange, applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
+import { 
+  Node, 
+  Edge, 
+  OnNodesChange, 
+  OnEdgesChange, 
+  OnConnect, 
+  applyNodeChanges, 
+  applyEdgeChanges, 
+  addEdge 
+} from '@xyflow/react';
 
-export type HardwareType = 'ControlHub' | string; // Allows for dynamic strings now
+export type PortType = 'pwr12v' | 'pwr5v' | 'can' | 'eth' | 'pneumatic' | 'usb';
 
-export interface RobotNodeData {
+export interface FRCNodeData extends Record<string, unknown> {
   label: string;
-  hardwareType: HardwareType;
-  [key: string]: any; // Allow our dynamic ports and themes
+  deviceType: string;
+  category: 'Control & Power' | 'Actuators & Drive' | 'Sensors & Vision' | 'Coprocessors';
+  canId?: number;
+  powerChannel?: number;
+  protocol?: string;
+  details?: string;
 }
 
-export type RobotNode = Node<RobotNodeData>;
-
-// --- THE HARDWARE REGISTRY ---
-// Add new components here in seconds. The StandardNode will automatically render them!
-const HARDWARE_LIBRARY: Record<string, any> = {
-  // ==========================================
-  // MOTORS & ACTUATORS
-  // ==========================================
-  DcMotor: {
-    theme: 'amber', iconName: 'Zap',
-    inputs: [{ id: 'power_in', label: '12V Power & Encoder', color: '!bg-amber-500' }],
-    outputs: [],
-    details: { "Type": "DC Motor (w/ Integrated Encoder)", "Compatibility": "Direct" }
-  },
-  Servo: {
-    theme: 'rose', iconName: 'Settings',
-    inputs: [{ id: 'pwm_in', label: 'PWM Signal (5V)', color: '!bg-orange-400' }],
-    outputs: [],
-    details: { "Type": "Standard Servo" }
-  },
-
-  // ==========================================
-  // I2C SENSORS (Outputs to Control Hub Target)
-  // ==========================================
-  RevColorSensor: {
-    theme: 'cyan', iconName: 'Eye',
-    inputs: [],
-    outputs: [{ id: 'i2c_out', label: 'I2C Data Bus', color: '!bg-cyan-400' }],
-    details: { "Manufacturer": "REV Robotics", "Version": "V2/V3", "Wiring": "Direct" }
-  },
-  RevDistanceSensor: {
-    theme: 'cyan', iconName: 'Ruler',
-    inputs: [],
-    outputs: [{ id: 'i2c_out', label: 'I2C Data Bus', color: '!bg-cyan-400' }],
-    details: { "Manufacturer": "REV Robotics", "Range": "2m", "Wiring": "Direct" }
-  },
-  Rev9AxisImu: {
-    theme: 'cyan', iconName: 'Compass',
-    inputs: [],
-    outputs: [{ id: 'i2c_out', label: 'I2C Data Bus', color: '!bg-cyan-400' }],
-    details: { "Manufacturer": "REV Robotics", "Type": "9-Axis IMU", "Wiring": "Direct" }
-  },
-  NavX2Micro: {
-    theme: 'cyan', iconName: 'Navigation',
-    inputs: [],
-    outputs: [{ id: 'i2c_out', label: 'I2C Data Bus', color: '!bg-cyan-400' }],
-    details: { "Manufacturer": "Kauai Labs", "Type": "IMU/AHRS", "Wiring": "Direct" }
-  },
-  PinpointOdometry: {
-    theme: 'cyan', iconName: 'Map',
-    inputs: [],
-    outputs: [{ id: 'i2c_out', label: 'I2C Data Bus', color: '!bg-cyan-400' }],
-    details: { "Manufacturer": "goBILDA", "Type": "Odometry Computer", "Wiring": "Direct" }
-  },
-  OctoQuad: {
-    theme: 'cyan', iconName: 'Cpu',
-    inputs: [],
-    outputs: [{ id: 'i2c_out', label: 'I2C Data Bus', color: '!bg-cyan-400' }],
-    details: { "Manufacturer": "DigitalChickenLabs", "Type": "Encoder Hub", "Wiring": "Direct" }
-  },
-  StandardI2CSensor: {
-    theme: 'cyan', iconName: 'Radio',
-    inputs: [],
-    outputs: [{ id: 'i2c_out', label: 'I2C Data Bus', color: '!bg-cyan-400' }],
-    details: { "Manufacturer": "AndyMark", "Type": "Color/Lidar/IMU", "Wiring": "Direct" }
-  },
-  HuskyLens: {
-    theme: 'cyan', iconName: 'Camera',
-    inputs: [],
-    outputs: [{ id: 'i2c_out', label: 'I2C Data Bus', color: '!bg-cyan-400' }],
-    details: { "Manufacturer": "DFRobot", "Wiring": "Custom Adapter Cable Req." }
-  },
-  OpticalOdometrySparkFun: {
-    theme: 'cyan', iconName: 'Mouse',
-    inputs: [],
-    outputs: [{ id: 'i2c_out', label: 'I2C Data Bus', color: '!bg-cyan-400' }],
-    details: { "Manufacturer": "SparkFun", "Wiring": "Adapter Cable Req." }
-  },
-  AdafruitI2C: {
-    theme: 'cyan', iconName: 'Microchip',
-    inputs: [],
-    outputs: [{ id: 'i2c_out', label: 'I2C Data Bus', color: '!bg-cyan-400' }],
-    details: { "Manufacturer": "Adafruit", "Type": "BNO055 / TCS34725", "Wiring": "Custom Harness Req." }
-  },
-  ModernRoboticsI2C: {
-    theme: 'cyan', iconName: 'History',
-    inputs: [],
-    outputs: [{ id: 'i2c_out', label: 'I2C Data Bus', color: '!bg-cyan-400' }],
-    details: { "Manufacturer": "Modern Robotics", "Type": "Compass/Gyro/IR (Legacy)", "Wiring": "Logic Level Converter Req." }
-  },
-
-  // ==========================================
-  // DIGITAL SENSORS
-  // ==========================================
-  TouchSensor: {
-    theme: 'purple', iconName: 'Hand',
-    inputs: [],
-    outputs: [{ id: 'digital_out', label: 'Digital Signal', color: '!bg-purple-400' }],
-    details: { "Manufacturer": "REV Robotics", "Type": "Button/Limit Switch", "Wiring": "Direct" }
-  },
-  MagneticLimitSwitch: {
-    theme: 'purple', iconName: 'Magnet',
-    inputs: [],
-    outputs: [{ id: 'digital_out', label: 'Digital Signal', color: '!bg-purple-400' }],
-    details: { "Manufacturer": "REV Robotics", "Type": "Magnetic Field Sensor", "Wiring": "Direct" }
-  },
-  LegacyLimitSwitch: {
-    theme: 'purple', iconName: 'ToggleLeft',
-    inputs: [],
-    outputs: [{ id: 'digital_out', label: 'Digital Signal', color: '!bg-purple-400' }],
-    details: { "Manufacturer": "Modern Robotics", "Type": "Limit Switch", "Wiring": "Custom Harness Req." }
-  },
-
-  // ==========================================
-  // ANALOG SENSORS
-  // ==========================================
-  Potentiometer: {
-    theme: 'emerald', iconName: 'RotateCw',
-    inputs: [],
-    outputs: [{ id: 'analog_out', label: 'Analog Signal', color: '!bg-emerald-400' }],
-    details: { "Manufacturer": "REV Robotics", "Type": "Rotational Position", "Wiring": "Custom Harness Req." }
-  },
-  FloodgateSwitch: {
-    theme: 'emerald', iconName: 'Power',
-    inputs: [],
-    outputs: [{ id: 'analog_out', label: 'Analog Signal', color: '!bg-emerald-400' }],
-    details: { "Manufacturer": "goBILDA", "Type": "Power Switch", "Wiring": "Direct" }
-  },
-  LegacyTouchSensor: {
-    theme: 'emerald', iconName: 'Hand',
-    inputs: [],
-    outputs: [{ id: 'analog_out', label: 'Analog Signal', color: '!bg-emerald-400' }],
-    details: { "Manufacturer": "Modern Robotics", "Type": "Touch Sensor (Legacy)", "Wiring": "Custom Harness Req." }
-  },
-
-  // ==========================================
-  // STANDALONE ENCODERS
-  // ==========================================
-  ThroughBoreEncoder: {
-    theme: 'amber', iconName: 'Disc',
-    inputs: [{ id: 'encoder_link', label: 'Encoder Port Connection', color: '!bg-amber-500' }],
-    outputs: [],
-    details: { "Manufacturer": "REV Robotics", "Type": "Quad Encoder V2", "Wiring": "Direct" }
-  },
-
-  // ==========================================
-  // VISION SENSORS & COPROCESSORS
-  // ==========================================
-  Limelight3A: {
-    theme: 'indigo', iconName: 'Target',
-    inputs: [{ id: 'usb_link', label: 'USB 3.0', color: '!bg-indigo-400' }],
-    outputs: [],
-    details: { "Manufacturer": "Limelight", "Type": "Smart Vision Sensor", "Protocol": "UVC / Network" }
-  },
-  Webcam: {
-    theme: 'indigo', iconName: 'Video',
-    inputs: [{ id: 'usb_link', label: 'USB 2.0 / 3.0', color: '!bg-indigo-400' }],
-    outputs: [],
-    details: { "Manufacturer": "Standard (Logitech/Microsoft)", "Type": "UVC Camera", "Usage": "TensorFlow / AprilTags" }
-  },
-  Coprocessor: {
-    theme: 'indigo', iconName: 'Cpu',
-    inputs: [{ id: 'usb_serial', label: 'USB Serial Link', color: '!bg-indigo-400' }],
-    outputs: [{ id: 'data_out', label: 'Data / GPIO Bus', color: '!bg-indigo-300' }],
-    details: { "OS": "Linux (ARM)", "Protocol": "USB Serial" }
-  }
-};
-
-// --- CONNECTION RULES ---
-// Define rules for hardware connections here. Key format: "hardwareType:targetHandleId"
-interface ConnectionRule {
-  maxConnections?: number; 
-  allowedSourcePrefixes?: string[];
-}
-
-const CONNECTION_RULES: Record<string, ConnectionRule> = {
-  'DcMotor:power_in': {
-    maxConnections: 1,
-    allowedSourcePrefixes: ['motor_'],
-  },
-};
-
-
-interface RobotStoreState {
-  nodes: RobotNode[];
+interface RobotStore {
+  nodes: Node<FRCNodeData>[];
   edges: Edge[];
-  onNodesChange: OnNodesChange<RobotNode>;
+  onNodesChange: OnNodesChange;
   onEdgesChange: OnEdgesChange;
-  onConnect: (connection: Connection) => void;
-  addDevice: (type: HardwareType) => void;
-  updateNodeLabel: (id: string, label: string) => void;
-  deleteNode: (id: string) => void;
+  onConnect: OnConnect;
+  addDevice: (type: string) => void;
+  removeNode: (id: string) => void;
   clearWorkspace: () => void;
+  setNodes: (nodes: Node<FRCNodeData>[]) => void;
+  setEdges: (edges: Edge[]) => void;
 }
 
-export const useRobotStore = create<RobotStoreState>((set, get) => ({
+// Wire color and stroke properties by port type
+export const WIRE_STYLES: Record<PortType, { color: string; label: string; animated: boolean; strokeWidth: number; strokeDasharray?: string }> = {
+  pwr12v: { color: '#ef4444', label: '12V Power', animated: false, strokeWidth: 3 },
+  pwr5v: { color: '#f97316', label: '5V/3.3V Power', animated: false, strokeWidth: 2 },
+  can: { color: '#eab308', label: 'CAN Bus', animated: true, strokeWidth: 2.5 },
+  eth: { color: '#10b981', label: 'Ethernet', animated: true, strokeWidth: 2.5 },
+  pneumatic: { color: '#0284c7', label: 'Pneumatics', animated: false, strokeWidth: 2.5, strokeDasharray: '6 3' },
+  usb: { color: '#a855f7', label: 'USB Serial', animated: false, strokeWidth: 2 },
+};
+
+const FRC_DEVICE_DEFAULTS: Record<string, { label: string; category: FRCNodeData['category']; protocol: string; details: string }> = {
+  roboRIO: { label: 'roboRIO 2.0', category: 'Control & Power', protocol: 'CAN / Eth / USB', details: 'Main Robot Controller' },
+  PDH: { label: 'REV PDH (20 Ch)', category: 'Control & Power', protocol: '12V Power / CAN', details: 'Power Distribution Hub' },
+  PneumaticsHub: { label: 'Pneumatics Hub', category: 'Control & Power', protocol: 'CAN / Pneumatic', details: 'PCM/PH Controller' },
+  KrakenX60: { label: 'Kraken X60 Motor', category: 'Actuators & Drive', protocol: 'CAN Bus / Talon FX', details: 'Brushless Actuator' },
+  SparkMaxNEO: { label: 'NEO + SPARK Max', category: 'Actuators & Drive', protocol: 'CAN Bus / PWM', details: 'Brushless Controller' },
+  SolenoidValve: { label: 'Solenoid Valve', category: 'Actuators & Drive', protocol: 'Pneumatic / 12V', details: 'Pneumatic Actuator' },
+  Limelight: { label: 'Limelight 3/3G', category: 'Sensors & Vision', protocol: 'Ethernet / CAN', details: 'Smart Vision Camera' },
+  CANcoder: { label: 'CTRE CANcoder', category: 'Sensors & Vision', protocol: 'CAN Bus', details: 'Absolute Encoder' },
+  Pigeon2: { label: 'Pigeon 2.0 IMU', category: 'Sensors & Vision', protocol: 'CAN Bus', details: '9-Axis Gyroscope' },
+  Coprocessor: { label: 'Linux Coprocessor', category: 'Coprocessors', protocol: 'USB / Ethernet', details: 'Orange Pi / Jetson' },
+};
+
+let deviceCounter = 1;
+
+// Helper to determine port connection type from handle string ID
+const getPortTypeFromHandle = (handleId?: string | null): PortType => {
+  if (!handleId) return 'can';
+  if (handleId.includes('12v') || handleId.includes('pwr-in') || handleId.includes('pwr-out')) return 'pwr12v';
+  if (handleId.includes('5v') || handleId.includes('3v3')) return 'pwr5v';
+  if (handleId.includes('can')) return 'can';
+  if (handleId.includes('eth')) return 'eth';
+  if (handleId.includes('pneumatic') || handleId.includes('air')) return 'pneumatic';
+  if (handleId.includes('usb')) return 'usb';
+  return 'can';
+};
+
+export const useRobotStore = create<RobotStore>((set, get) => ({
   nodes: [],
   edges: [],
-  
-  onNodesChange: (c) => set({ nodes: applyNodeChanges(c, get().nodes) }),
-  onEdgesChange: (c) => set({ edges: applyEdgeChanges(c, get().edges) }),
+
+  onNodesChange: (changes) => {
+    set({
+      nodes: applyNodeChanges(changes, get().nodes) as Node<FRCNodeData>[],
+    });
+  },
+
+  onEdgesChange: (changes) => {
+    set({
+      edges: applyEdgeChanges(changes, get().edges),
+    });
+  },
+
   onConnect: (connection) => {
-    const { nodes, edges } = get();
-    const targetNode = nodes.find((n) => n.id === connection.target);
-    const ruleKey = `${targetNode?.data.hardwareType}:${connection.targetHandle}`;
-    const rule = CONNECTION_RULES[ruleKey];
-    if (rule) {
-      if (rule.maxConnections !== undefined) {
-        const currentCount = edges.filter(
-          (e) => e.target === connection.target && e.targetHandle === connection.targetHandle
-        ).length;
-        if (currentCount >= rule.maxConnections) return;  
-      }
-      if (rule.allowedSourcePrefixes) {
-        const isAllowed = rule.allowedSourcePrefixes.some((prefix) =>
-          connection.sourceHandle?.startsWith(prefix)
-        );
-        if (!isAllowed) return;  
-      }
-    }
-    set({ edges: addEdge({ ...connection, animated: true, style: { stroke: '#94a3b8' } }, edges) });
+    // Detect wire type based on the source or target handle ID
+    const portType = getPortTypeFromHandle(connection.sourceHandle || connection.targetHandle);
+    const wireStyle = WIRE_STYLES[portType];
+
+    set({
+      edges: addEdge(
+        {
+          ...connection,
+          type: 'smoothstep',
+          animated: wireStyle.animated,
+          label: wireStyle.label,
+          labelStyle: { fill: '#f8fafc', fontSize: 10, fontWeight: 700, fontFamily: 'monospace' },
+          labelBgStyle: { fill: '#0f172a', fillOpacity: 0.85, rx: 4, ry: 4 },
+          style: { 
+            stroke: wireStyle.color, 
+            strokeWidth: wireStyle.strokeWidth, 
+            strokeDasharray: wireStyle.strokeDasharray 
+          },
+        },
+        get().edges
+      ),
+    });
   },
 
   addDevice: (type: string) => {
-    const id = `${type.toLowerCase()}_${Date.now()}`;
-    const defaultData: RobotNodeData = {
-      label: `${type.toLowerCase()}${get().nodes.length + 1}`,
-      hardwareType: type,
+    const config = FRC_DEVICE_DEFAULTS[type] || {
+      label: type,
+      category: 'Actuators & Drive',
+      protocol: 'CAN Bus',
+      details: 'FRC Component',
     };
 
-    // If it's in the registry, attach the configuration
-    const blueprint = HARDWARE_LIBRARY[type];
-    if (blueprint) {
-      Object.assign(defaultData, blueprint);
-    }
+    const id = `${type.toLowerCase()}${deviceCounter++}`;
+    const nodeCount = get().nodes.length;
+    
+    const position = {
+      x: 100 + (nodeCount % 3) * 320,
+      y: 80 + Math.floor(nodeCount / 3) * 220,
+    };
 
-    // Determine React Flow nodeType mapping
-    // If it's the massive Control Hub, use the custom one. Otherwise, default to StandardNode.
-    const reactFlowType = type === 'ControlHub' ? 'ControlHub' : 'StandardNode';
+    const isController = type === 'roboRIO' || type === 'Coprocessor' || type === 'PDH';
 
-    set({ nodes: [...get().nodes, {
+    const newNode: Node<FRCNodeData> = {
       id,
-      type: reactFlowType,
-      position: { x: 300 + Math.random() * 50, y: 200 + Math.random() * 50 },
-      data: defaultData,
-    }] });
+      type: isController ? 'ControlHub' : 'StandardNode',
+      position,
+      data: {
+        label: `${config.label} (${id})`,
+        deviceType: type,
+        category: config.category,
+        protocol: config.protocol,
+        details: config.details,
+        canId: type !== 'PDH' && type !== 'roboRIO' ? (nodeCount % 62) + 1 : undefined,
+      },
+    };
+
+    set({
+      nodes: [...get().nodes, newNode],
+    });
   },
 
-  updateNodeLabel: (id, label) => set({
-    nodes: get().nodes.map((n) => n.id === id ? { ...n, data: { ...n.data, label } } : n)
-  }),
-  deleteNode: (id) => set({
-    nodes: get().nodes.filter((n) => n.id !== id),
-    edges: get().edges.filter((e) => e.source !== id && e.target !== id),
-  }),
-  clearWorkspace: () => set({ nodes: [], edges: [] })
+  removeNode: (id: string) => {
+    set({
+      nodes: get().nodes.filter((node) => node.id !== id),
+      edges: get().edges.filter((edge) => edge.source !== id && edge.target !== id),
+    });
+  },
+
+  clearWorkspace: () => set({ nodes: [], edges: [] }),
+  setNodes: (nodes) => set({ nodes }),
+  setEdges: (edges) => set({ edges }),
 }));
