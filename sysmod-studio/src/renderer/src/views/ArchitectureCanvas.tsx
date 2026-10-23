@@ -17,7 +17,11 @@ import {
   Server, 
   ArrowLeft, 
   Save,
-  ShieldAlert 
+  ShieldAlert,
+  Gauge,
+  Wind,
+  Radio,
+  Activity
 } from 'lucide-react';
 import '@xyflow/react/dist/style.css';
 import { StandardNode } from './components/StandardNode';
@@ -26,14 +30,12 @@ import { PriceEditorModal } from './components/PriceEditorModal';
 
 const proOptions = { hideAttribution: true };
 
-// Helper to reliably resolve a node's pricing key from its attributes or visual data tags
+// Helper to resolve node hardware pricing key
 const getHardwareType = (node: any, deviceCosts: Record<string, number>): string => {
-  // 1. Check top-level node type (e.g. if node.type is 'ControlHub')
   if (node.type && deviceCosts[node.type] !== undefined) {
     return node.type;
   }
   
-  // 2. Check metadata inside node.data where store configurations often track specific models
   const dataProps = ['type', 'deviceType', 'hardwareType', 'subType', 'kind'];
   for (const prop of dataProps) {
     const val = node.data?.[prop];
@@ -42,7 +44,6 @@ const getHardwareType = (node: any, deviceCosts: Record<string, number>): string
     }
   }
 
-  // 3. Fuzzy matching search against node labels (e.g. "DC Motor (Ex)" -> "DcMotor")
   const label = node.data?.label;
   if (typeof label === 'string') {
     const cleanLabel = label.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -72,18 +73,23 @@ export default function App(): React.JSX.Element {
     setEdges 
   } = useRobotStore();
 
+  // FRC Standard Hardware Hardware Price Registry
   const [deviceCosts, setDeviceCosts] = useState<Record<string, number>>({
-    ControlHub: 359.00,
-    DcMotor: 35.00,
-    Servo: 15.00,
-    ColorSensor: 25.00,
-    Webcam: 35.00,
-    Coprocessor: 80.00,
+    roboRIO: 450.00,
+    PDH: 240.00,
+    PneumaticsHub: 120.00,
+    KrakenX60: 180.00,
+    SparkMaxNEO: 125.00,
+    SolenoidValve: 45.00,
+    CANcoder: 65.00,
+    Limelight: 400.00,
+    Pigeon2: 199.00,
+    Coprocessor: 120.00,
   });
   
   const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
 
-  // Custom UI Alert State for Budget Limit Warnings
+  // Custom UI Alert State for FRC Budget Limit Warnings
   const [budgetViolation, setBudgetViolation] = useState<{
     isOpen: boolean;
     deviceName: string;
@@ -98,13 +104,12 @@ export default function App(): React.JSX.Element {
     limit: 0
   });
 
-  // ── States & Workspace Budgets ─────────────────────────────────────────────
   const [spendingLimit, setSpendingLimit] = useState<number>(0);
   const [isCodeModalOpen, setIsCodeModalOpen] = useState(false);
   const [modalAadl, setModalAadl] = useState('');
   const [modalJava, setModalJava] = useState('');
 
-  // ── 2. Hydrate Canvas & Budget from Workspace JSON on Mount ────────────────
+  // Hydrate Canvas & Budget from Workspace JSON on Mount
   useEffect(() => {
     const loadSavedWorkspace = async () => {
       let savedData: any = null;
@@ -116,18 +121,15 @@ export default function App(): React.JSX.Element {
       }
 
       if (savedData) {
-        // Enforce existing custom costs
         if (savedData.deviceCosts) {
           setDeviceCosts(savedData.deviceCosts);
         }
-        // Enforce existing nodes/edges configuration
         if (savedData.nodes && typeof setNodes === 'function') {
           setNodes(savedData.nodes);
         }
         if (savedData.edges && typeof setEdges === 'function') {
           setEdges(savedData.edges);
         }
-        // Extract original spending limit from Design Brief / Brainstorming
         if (savedData.spendingLimit) {
           setSpendingLimit(parseFloat(savedData.spendingLimit) || 0);
         }
@@ -137,7 +139,7 @@ export default function App(): React.JSX.Element {
     loadSavedWorkspace();
   }, [setNodes, setEdges]);
 
-  // ── 3. Calculate Current Canvas Total Hardware Cost ────────────────────────
+  // Calculate Current Canvas Total Hardware Cost
   const currentTotalCost = useMemo(() => {
     return nodes.reduce((total, node) => {
       const type = getHardwareType(node, deviceCosts);
@@ -146,11 +148,10 @@ export default function App(): React.JSX.Element {
     }, 0);
   }, [nodes, deviceCosts]);
 
-  // ── 4. Intercept & Validate Device Addition (Budget Guard) ────────────────
+  // Intercept & Validate Device Addition (Budget Guard)
   const handleAddDevice = (type: string) => {
     const cost = deviceCosts[type] || 0;
     
-    // Check if the next action exceeds budget constraints
     if (spendingLimit > 0 && (currentTotalCost + cost) > spendingLimit) {
       setBudgetViolation({
         isOpen: true,
@@ -162,11 +163,9 @@ export default function App(): React.JSX.Element {
       return;
     }
     
-    // Add component if under budget
     addDevice(type);
   };
 
-  // Save changes seamlessly back to JSON
   const saveWorkspaceData = async (
     currentNodes = nodes, 
     currentEdges = edges, 
@@ -194,7 +193,6 @@ export default function App(): React.JSX.Element {
     }
   };
 
-  // Auto-save changes
   useEffect(() => {
     if (nodes.length > 0 || edges.length > 0) {
       saveWorkspaceData(nodes, edges, deviceCosts);
@@ -208,7 +206,7 @@ export default function App(): React.JSX.Element {
 
   const handleManualSave = async () => {
     await saveWorkspaceData(nodes, edges, deviceCosts);
-    alert('Architecture configuration saved successfully to your system JSON workspace!');
+    alert('FRC Architecture configuration saved successfully to JSON workspace!');
   };
 
   const nodeTypes = useMemo<NodeTypes>(() => ({
@@ -227,11 +225,11 @@ export default function App(): React.JSX.Element {
     try {
       const response = await window.sysmodAPI.saveJavaFile(code);
       if (response.success && response.filePath) {
-        alert(`Configuration saved successfully to:\n${response.filePath}`);
+        alert(`WPILib Robot Configuration saved successfully to:\n${response.filePath}`);
       }
     } catch (error) {
       console.error('IPC IO failure:', error);
-      alert('Critical Error: Failed to write file payload over native runtime bridge.');
+      alert('Critical Error: Failed to write WPILib file payload over native runtime bridge.');
     }
   };
 
@@ -241,14 +239,14 @@ export default function App(): React.JSX.Element {
       <aside className="w-80 border-r border-slate-800 bg-slate-900 flex flex-col justify-between z-10 shadow-2xl">
         <div className="p-4 space-y-5 overflow-y-auto max-h-[calc(100vh-160px)]">
           <div className="flex items-center gap-2 pb-4 border-b border-slate-800">
-            <Layers className="text-amber-500 w-6 h-6" />
+            <Layers className="text-indigo-500 w-6 h-6" />
             <div>
               <h1 className="text-lg font-mono font-black tracking-tight text-slate-100">SysMod Studio</h1>
-              <p className="text-[10px] text-slate-400 font-sans tracking-widest uppercase">FTC Subsystem Modeler</p>
+              <p className="text-[10px] text-indigo-400 font-sans tracking-widest uppercase font-semibold">FRC Subsystem Architecture</p>
             </div>
           </div>
 
-          {/* Navigation & Multi-Page Core Sync Buttons */}
+          {/* Navigation & Multi-Page Sync Buttons */}
           <div className="grid grid-cols-2 gap-2 pb-2">
             <button
               onClick={handleBackToBrainstorming}
@@ -264,25 +262,23 @@ export default function App(): React.JSX.Element {
             </button>
           </div>
 
-          {/* Dynamic Price Editor Trigger Action */}
           <button
             onClick={() => setIsPriceModalOpen(true)}
-            className="w-full py-2 px-3 rounded bg-slate-950 hover:bg-slate-800 border border-slate-850 hover:border-slate-700 text-[11px] font-mono font-bold transition text-slate-300 flex items-center justify-center gap-1.5"
+            className="w-full py-2 px-3 rounded bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-[11px] font-mono font-bold transition text-slate-300 flex items-center justify-center gap-1.5"
           >
             <Settings className="w-3.5 h-3.5 text-slate-400" /> Configure Unit Costs
           </button>
 
-          {/* ── 5. System Hardware Budget Widget ── */}
+          {/* Budget Widget */}
           {spendingLimit > 0 && (
             <div className="bg-slate-950 p-4 rounded-lg border border-slate-800/80 space-y-3">
               <div className="flex justify-between items-center">
-                <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest">Hardware Margin</span>
+                <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest">FRC BOM Margin</span>
                 <span className={`text-xs font-mono font-bold ${currentTotalCost > spendingLimit ? 'text-red-400' : 'text-emerald-400'}`}>
                   ${currentTotalCost.toFixed(2)} / ${spendingLimit.toFixed(2)}
                 </span>
               </div>
               
-              {/* Progress Bar Visualizer */}
               <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden">
                 <div 
                   className={`h-1.5 rounded-full transition-all duration-300 ${
@@ -298,7 +294,7 @@ export default function App(): React.JSX.Element {
               
               <div className="flex justify-between text-[10px] font-mono text-slate-500">
                 <span>Remaining:</span>
-                <span className={(spendingLimit - currentTotalCost) < 50 ? 'text-amber-400 font-bold' : 'text-slate-300'}>
+                <span className={(spendingLimit - currentTotalCost) < 100 ? 'text-amber-400 font-bold' : 'text-slate-300'}>
                   ${(spendingLimit - currentTotalCost).toFixed(2)}
                 </span>
               </div>
@@ -306,79 +302,127 @@ export default function App(): React.JSX.Element {
           )}
 
           <div className="space-y-3 border-t border-slate-800/80 pt-4">
-            <h2 className="text-xs font-mono uppercase tracking-wider text-slate-400 px-1">Hardware Blueprinting Components</h2>
+            <h2 className="text-xs font-mono uppercase tracking-wider text-slate-400 px-1">FRC Hardware Components</h2>
             <div className="space-y-2">
 
-              {/* ── Controllers ── */}
-              <p className="text-[9px] font-mono text-slate-600 uppercase tracking-widest px-1 pt-1">Controllers</p>
+              {/* ── Control & Power ── */}
+              <p className="text-[9px] font-mono text-indigo-400 uppercase tracking-widest px-1 pt-1 font-bold">Control &amp; Power</p>
+              
               <button
-                onClick={() => handleAddDevice('ControlHub')}
-                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-amber-500/30 text-left transition duration-150 group"
+                onClick={() => handleAddDevice('roboRIO')}
+                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-indigo-500/30 text-left transition duration-150 group"
               >
                 <div className="flex items-center gap-2">
-                  <Cpu className="w-4 h-4 text-amber-500" />
-                  <span className="text-xs font-mono text-slate-300">REV Control Hub (${(deviceCosts.ControlHub || 0).toFixed(2)})</span>
-                </div>
-                <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-amber-500 transition" />
-              </button>
-
-              {/* ── Actuators ── */}
-              <p className="text-[9px] font-mono text-slate-600 uppercase tracking-widest px-1 pt-1">Actuators</p>
-              <button
-                onClick={() => handleAddDevice('DcMotor')}
-                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-amber-500/20 text-left transition duration-150 group"
-              >
-                <div className="flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-amber-400" />
-                  <span className="text-xs font-mono text-slate-300">DC Motor (Ex) (${(deviceCosts.DcMotor || 0).toFixed(2)})</span>
-                </div>
-                <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-amber-400 transition" />
-              </button>
-
-              <button
-                onClick={() => handleAddDevice('Servo')}
-                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-rose-500/20 text-left transition duration-150 group"
-              >
-                <div className="flex items-center gap-2">
-                  <Settings className="w-4 h-4 text-rose-400" />
-                  <span className="text-xs font-mono text-slate-300">Standard Servo (${(deviceCosts.Servo || 0).toFixed(2)})</span>
-                </div>
-                <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-rose-400 transition" />
-              </button>
-
-              {/* ── Sensors & Vision ── */}
-              <p className="text-[9px] font-mono text-slate-600 uppercase tracking-widest px-1 pt-1">Sensors &amp; Vision</p>
-              <button
-                onClick={() => handleAddDevice('ColorSensor')}
-                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-cyan-500/30 text-left transition duration-150 group"
-              >
-                <div className="flex items-center gap-2">
-                  <Eye className="w-4 h-4 text-cyan-400" />
-                  <span className="text-xs font-mono text-slate-300">I2C Color Sensor (${(deviceCosts.ColorSensor || 0).toFixed(2)})</span>
-                </div>
-                <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-cyan-400 transition" />
-              </button>
-
-              <button
-                onClick={() => handleAddDevice('Webcam')}
-                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-indigo-500/20 text-left transition duration-150 group"
-              >
-                <div className="flex items-center gap-2">
-                  <Camera className="w-4 h-4 text-indigo-400" />
-                  <span className="text-xs font-mono text-slate-300">USB Webcam (${(deviceCosts.Webcam || 0).toFixed(2)})</span>
+                  <Cpu className="w-4 h-4 text-indigo-400" />
+                  <span className="text-xs font-mono text-slate-300">roboRIO 2.0 (${(deviceCosts.roboRIO || 0).toFixed(2)})</span>
                 </div>
                 <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-400 transition" />
               </button>
 
+              <button
+                onClick={() => handleAddDevice('PDH')}
+                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-amber-500/30 text-left transition duration-150 group"
+              >
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-amber-500" />
+                  <span className="text-xs font-mono text-slate-300">REV PDH (20 Ch) (${(deviceCosts.PDH || 0).toFixed(2)})</span>
+                </div>
+                <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-amber-500 transition" />
+              </button>
+
+              <button
+                onClick={() => handleAddDevice('PneumaticsHub')}
+                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-sky-500/30 text-left transition duration-150 group"
+              >
+                <div className="flex items-center gap-2">
+                  <Wind className="w-4 h-4 text-sky-400" />
+                  <span className="text-xs font-mono text-slate-300">Pneumatics Hub (${(deviceCosts.PneumaticsHub || 0).toFixed(2)})</span>
+                </div>
+                <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-sky-400 transition" />
+              </button>
+
+              {/* ── Motors & Actuators ── */}
+              <p className="text-[9px] font-mono text-indigo-400 uppercase tracking-widest px-1 pt-1 font-bold">Actuators &amp; Drive</p>
+              
+              <button
+                onClick={() => handleAddDevice('KrakenX60')}
+                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-emerald-500/30 text-left transition duration-150 group"
+              >
+                <div className="flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-emerald-400" />
+                  <span className="text-xs font-mono text-slate-300">Kraken X60 / Talon FX (${(deviceCosts.KrakenX60 || 0).toFixed(2)})</span>
+                </div>
+                <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-emerald-400 transition" />
+              </button>
+
+              <button
+                onClick={() => handleAddDevice('SparkMaxNEO')}
+                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-orange-500/30 text-left transition duration-150 group"
+              >
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-orange-400" />
+                  <span className="text-xs font-mono text-slate-300">NEO Motor + SPARK Max (${(deviceCosts.SparkMaxNEO || 0).toFixed(2)})</span>
+                </div>
+                <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-orange-400 transition" />
+              </button>
+
+              <button
+                onClick={() => handleAddDevice('SolenoidValve')}
+                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-cyan-500/30 text-left transition duration-150 group"
+              >
+                <div className="flex items-center gap-2">
+                  <Wind className="w-4 h-4 text-cyan-400" />
+                  <span className="text-xs font-mono text-slate-300">Solenoid Valve Solenoid (${(deviceCosts.SolenoidValve || 0).toFixed(2)})</span>
+                </div>
+                <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-cyan-400 transition" />
+              </button>
+
+              {/* ── Sensors & Vision ── */}
+              <p className="text-[9px] font-mono text-indigo-400 uppercase tracking-widest px-1 pt-1 font-bold">Sensors &amp; Vision</p>
+              
+              <button
+                onClick={() => handleAddDevice('Limelight')}
+                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-lime-500/30 text-left transition duration-150 group"
+              >
+                <div className="flex items-center gap-2">
+                  <Camera className="w-4 h-4 text-lime-400" />
+                  <span className="text-xs font-mono text-slate-300">Limelight 3/3G Vision (${(deviceCosts.Limelight || 0).toFixed(2)})</span>
+                </div>
+                <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-lime-400 transition" />
+              </button>
+
+              <button
+                onClick={() => handleAddDevice('CANcoder')}
+                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-purple-500/30 text-left transition duration-150 group"
+              >
+                <div className="flex items-center gap-2">
+                  <Gauge className="w-4 h-4 text-purple-400" />
+                  <span className="text-xs font-mono text-slate-300">CTRE CANcoder (${(deviceCosts.CANcoder || 0).toFixed(2)})</span>
+                </div>
+                <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-purple-400 transition" />
+              </button>
+
+              <button
+                onClick={() => handleAddDevice('Pigeon2')}
+                className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-rose-500/30 text-left transition duration-150 group"
+              >
+                <div className="flex items-center gap-2">
+                  <Radio className="w-4 h-4 text-rose-400" />
+                  <span className="text-xs font-mono text-slate-300">Pigeon 2.0 IMU Gyro (${(deviceCosts.Pigeon2 || 0).toFixed(2)})</span>
+                </div>
+                <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-rose-400 transition" />
+              </button>
+
               {/* ── Compute ── */}
-              <p className="text-[9px] font-mono text-slate-600 uppercase tracking-widest px-1 pt-1">Compute</p>
+              <p className="text-[9px] font-mono text-indigo-400 uppercase tracking-widest px-1 pt-1 font-bold">Coprocessors</p>
+              
               <button
                 onClick={() => handleAddDevice('Coprocessor')}
                 className="w-full flex items-center justify-between p-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-indigo-500/30 text-left transition duration-150 group"
               >
                 <div className="flex items-center gap-2">
                   <Server className="w-4 h-4 text-indigo-400" />
-                  <span className="text-xs font-mono text-slate-300">Linux Coprocessor (${(deviceCosts.Coprocessor || 0).toFixed(2)})</span>
+                  <span className="text-xs font-mono text-slate-300">Orange Pi / Jetson (${(deviceCosts.Coprocessor || 0).toFixed(2)})</span>
                 </div>
                 <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-400 transition" />
               </button>
@@ -398,19 +442,19 @@ export default function App(): React.JSX.Element {
 
           <button
             onClick={handleViewCode}
-            className="w-full py-2.5 px-3 rounded flex items-center justify-center gap-2 text-xs font-mono bg-slate-900 border border-cyan-500/30 hover:border-cyan-400/60 text-cyan-400 hover:text-cyan-300 transition"
+            className="w-full py-2.5 px-3 rounded flex items-center justify-center gap-2 text-xs font-mono bg-slate-900 border border-indigo-500/30 hover:border-indigo-400/60 text-indigo-400 hover:text-indigo-300 transition"
           >
             <Eye className="w-3.5 h-3.5" />
-            Preview Code
+            Preview WPILib / Java Code
           </button>
 
           <button 
             onClick={handleExportHardwareCode}
             disabled={nodes.length === 0}
-            className="w-full py-3 px-4 rounded flex items-center justify-center gap-2 text-sm font-mono bg-amber-500 text-slate-950 font-bold hover:bg-amber-400 disabled:bg-slate-800 disabled:text-slate-600 disabled:border-transparent transition shadow-lg shadow-amber-500/10"
+            className="w-full py-3 px-4 rounded flex items-center justify-center gap-2 text-sm font-mono bg-indigo-600 text-white font-bold hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 disabled:border-transparent transition shadow-lg shadow-indigo-600/20"
           >
             <FileCode className="w-4 h-4" />
-            Export Code to OS
+            Export WPILib Robot Code
           </button>
         </div>
       </aside>
@@ -432,7 +476,6 @@ export default function App(): React.JSX.Element {
         </ReactFlow>
       </main>
 
-      {/* Code Viewer Modal */}
       <CodeViewerModal
         isOpen={isCodeModalOpen}
         onClose={() => setIsCodeModalOpen(false)}
@@ -440,7 +483,6 @@ export default function App(): React.JSX.Element {
         javaCode={modalJava}
       />
 
-      {/* Price Editor Modal */}
       <PriceEditorModal
         isOpen={isPriceModalOpen}
         onClose={() => setIsPriceModalOpen(false)}
@@ -451,34 +493,29 @@ export default function App(): React.JSX.Element {
         }}
       />
 
-      {/* ── Custom UI Budget Violation Modal (Replaced Browser Alert) ── */}
+      {/* Budget Limit Exceeded Modal */}
       {budgetViolation.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          {/* Glassmorphic Backdrop */}
           <div 
             className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity duration-300" 
             onClick={() => setBudgetViolation(prev => ({ ...prev, isOpen: false }))}
           />
 
-          {/* Modal Content container */}
           <div className="relative w-full max-w-md bg-slate-900 border border-red-500/30 rounded-2xl shadow-2xl shadow-red-950/20 overflow-hidden z-10 flex flex-col transform transition-all duration-300 scale-100">
-            {/* Warning visual indicator strip */}
             <div className="h-1 bg-gradient-to-r from-red-500 via-amber-500 to-red-500" />
             
             <div className="p-6 flex flex-col items-center text-center">
-              {/* Alert Icon Shield */}
               <div className="w-14 h-14 rounded-full bg-red-950/40 border border-red-500/20 flex items-center justify-center mb-4 text-red-500 shadow-lg shadow-red-950/30 animate-pulse">
                 <ShieldAlert className="w-7 h-7" />
               </div>
 
               <h3 className="text-sm font-mono font-bold uppercase tracking-widest text-red-400">
-                Budget Limit Exceeded
+                FRC Budget Limit Exceeded
               </h3>
               <p className="text-xs text-slate-400 mt-1 max-w-xs font-sans">
-                Adding this hardware unit crosses your established design envelope boundary.
+                Adding this FRC hardware unit exceeds your project spending limit boundary.
               </p>
 
-              {/* Cost Math Visual Cards */}
               <div className="w-full mt-6 bg-slate-950/80 rounded-xl border border-slate-800/80 p-4 space-y-3.5">
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-slate-400">Attempted Component</span>
@@ -504,7 +541,6 @@ export default function App(): React.JSX.Element {
                   </div>
                 </div>
 
-                {/* Progress bar overlay representation */}
                 <div className="pt-2">
                   <div className="relative w-full h-1 bg-slate-900 rounded-full overflow-hidden">
                     <div 
@@ -525,7 +561,6 @@ export default function App(): React.JSX.Element {
                 </div>
               </div>
 
-              {/* Call-to-actions */}
               <div className="w-full mt-6 grid grid-cols-2 gap-3">
                 <button
                   type="button"
