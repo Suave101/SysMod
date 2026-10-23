@@ -12,11 +12,7 @@ interface CodeViewerModalProps {
   pythonCode?: string;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Register AADL + SysMod dark theme once Monaco mounts.
-// ─────────────────────────────────────────────────────────────────────────────
 const beforeMonacoMount: BeforeMount = (monaco) => {
-  // Register AADL language definition if not already registered
   if (!monaco.languages.getLanguages().some((l) => l.id === 'aadl')) {
     monaco.languages.register({ id: 'aadl', extensions: ['.aadl'], aliases: ['AADL'] });
 
@@ -41,7 +37,6 @@ const beforeMonacoMount: BeforeMount = (monaco) => {
     });
   }
 
-  // Define SysMod dark theme supporting AADL, Java, and Python
   monaco.editor.defineTheme('sysmod-dark', {
     base: 'vs-dark',
     inherit: true,
@@ -53,26 +48,16 @@ const beforeMonacoMount: BeforeMount = (monaco) => {
       { token: 'identifier', foreground: 'D4D4D4' },
       { token: 'operator', foreground: 'C586C0' },
       { token: 'delimiter', foreground: '808080' },
-      // Java / Python specific tokens
-      { token: 'keyword.java', foreground: '5B9BD5', fontStyle: 'bold' },
-      { token: 'keyword.python', foreground: '4EC9B0', fontStyle: 'bold' },
-      { token: 'string.python', foreground: 'CE9178' },
-      { token: 'comment.python', foreground: '5A8A5E', fontStyle: 'italic' },
     ],
     colors: {
-      'editor.background': '#0F172A', // slate-950
-      'editor.foreground': '#CBD5E1', // slate-300
-      'editorLineNumber.foreground': '#475569', // slate-600
+      'editor.background': '#0F172A',
+      'editor.foreground': '#CBD5E1',
+      'editorLineNumber.foreground': '#475569',
       'editorLineNumber.activeForeground': '#94A3B8',
       'editorGutter.background': '#0F172A',
       'editor.selectionBackground': '#1E40AF55',
       'editor.lineHighlightBackground': '#1E293B',
-      'editorCursor.foreground': '#F59E0B', // amber-500
-      'editorIndentGuide.background': '#1E293B',
-      'editorIndentGuide.activeBackground': '#334155',
-      'scrollbar.shadow': '#00000000',
-      'scrollbarSlider.background': '#334155AA',
-      'scrollbarSlider.hoverBackground': '#475569CC',
+      'editorCursor.foreground': '#F59E0B',
     },
   });
 };
@@ -90,14 +75,8 @@ const EDITOR_OPTIONS = {
   scrollbar: { vertical: 'auto' as const, horizontal: 'auto' as const },
   padding: { top: 18, bottom: 18 },
   bracketPairColorization: { enabled: true },
-  renderWhitespace: 'none' as const,
-  cursorStyle: 'line' as const,
-  cursorBlinking: 'smooth' as const,
   smoothScrolling: true,
   contextmenu: false,
-  occurrencesHighlight: 'off' as const,
-  selectionHighlight: false,
-  renderValidationDecorations: 'off' as const,
 };
 
 export function CodeViewerModal({
@@ -125,11 +104,20 @@ export function CodeViewerModal({
 
   const handleCopy = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(currentCode);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(currentCode);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = currentCode;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fail silently if Clipboard API is restricted
+      // Fallback handled
     }
   }, [currentCode]);
 
@@ -203,10 +191,9 @@ export function CodeViewerModal({
           </button>
         </div>
 
-        {/* Monaco Editor Container */}
+        {/* Editor Container without key forcing remount */}
         <div className="flex-1 overflow-hidden">
           <Editor
-            key={activeTab}
             height="100%"
             language={currentLanguage}
             value={currentCode}

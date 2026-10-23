@@ -5,11 +5,13 @@ import { ControlHubNode } from './components/ControlHubNode';
 import { StandardNode } from './components/StandardNode';
 import { CodeViewerModal } from './components/CodeViewerModal';
 import { SystemVerificationModal } from './components/SystemVerificationModal';
+import { PdfPreviewModal } from './components/PdfPreviewModal';
 import { generatePythonCode, generateJavaCode, generateAadlCode } from './utils/codeGenerators';
 import { verifySystemProperties, VerificationReport } from './utils/systemVerifier';
+import { generateArchitectureReportHtml } from './utils/pdfGenerator';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Cpu, Plus, Layers, Trash2, Eye, Zap, Camera, Server, ArrowLeft, Save, Gauge, Wind, Radio, Activity, Battery, ShieldCheck, FileCode, Wifi, Lightbulb, Sliders, ShieldAlert, LucideIcon 
+  Cpu, Plus, Layers, Trash2, Eye, Zap, Camera, Server, ArrowLeft, Save, Gauge, Wind, Radio, Activity, Battery, ShieldCheck, FileCode, Wifi, Lightbulb, Sliders, ShieldAlert, FileText, LucideIcon 
 } from 'lucide-react';
 import '@xyflow/react/dist/style.css';
 
@@ -91,6 +93,10 @@ export default function App(): React.JSX.Element {
   const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
   const [verifyReport, setVerifyReport] = useState<VerificationReport>({ passed: true, score: 100, issues: [] });
 
+  // PDF Modal State
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+  const [pdfReportHtml, setPdfReportHtml] = useState('');
+
   const nodeTypes = useMemo<NodeTypes>(() => ({
     ControlHub: ControlHubNode,
     StandardNode: StandardNode,
@@ -107,6 +113,12 @@ export default function App(): React.JSX.Element {
     const report = verifySystemProperties(nodes, edges);
     setVerifyReport(report);
     setIsVerifyModalOpen(true);
+  };
+
+  const handleGeneratePDF = (): void => {
+    const html = generateArchitectureReportHtml(nodes, edges);
+    setPdfReportHtml(html);
+    setIsPdfModalOpen(true);
   };
 
   const handleExportRobotPy = async (): Promise<void> => {
@@ -188,12 +200,12 @@ export default function App(): React.JSX.Element {
           </div>
         </div>
 
-        <div className="p-4 border-t border-slate-800 flex flex-col gap-2.5 bg-slate-950/40">
-          <button onClick={clearWorkspace} className="w-full py-2 px-3 rounded flex items-center justify-center gap-2 text-xs font-mono bg-slate-900 border border-red-500/20 text-red-400 hover:border-red-500/50 transition">
+        <div className="p-4 border-t border-slate-800 flex flex-col gap-2 bg-slate-950/40">
+          <button onClick={clearWorkspace} className="w-full py-1.5 px-3 rounded flex items-center justify-center gap-2 text-xs font-mono bg-slate-900 border border-red-500/20 text-red-400 hover:border-red-500/50 transition">
             <Trash2 className="w-3.5 h-3.5" /> Clear Canvas
           </button>
-          <button onClick={handleViewCode} className="w-full py-2 px-3 rounded flex items-center justify-center gap-2 text-xs font-mono bg-slate-900 border border-indigo-500/30 text-indigo-400 hover:text-indigo-300 transition">
-            <Eye className="w-3.5 h-3.5" /> Preview Code (Python/Java/AADL)
+          <button onClick={handleGeneratePDF} className="w-full py-2 px-3 rounded flex items-center justify-center gap-2 text-xs font-mono font-bold bg-sky-950/60 border border-sky-500/40 text-sky-300 hover:bg-sky-900/60 transition shadow-md">
+            <FileText className="w-3.5 h-3.5 text-sky-400" /> Export PDF / BOM Spec
           </button>
           <button onClick={handleExportRobotPy} className="w-full py-2.5 px-3 rounded flex items-center justify-center gap-2 text-xs font-mono font-bold bg-emerald-600 text-white hover:bg-emerald-500 transition shadow-lg shadow-emerald-600/20">
             <FileCode className="w-4 h-4" /> Export robot.py (RobotPy)
@@ -256,6 +268,13 @@ export default function App(): React.JSX.Element {
         isOpen={isVerifyModalOpen}
         onClose={() => setIsVerifyModalOpen(false)}
         report={verifyReport}
+      />
+
+      {/* Embedded In-App PDF Preview Modal */}
+      <PdfPreviewModal
+        isOpen={isPdfModalOpen}
+        onClose={() => setIsPdfModalOpen(false)}
+        htmlContent={pdfReportHtml}
       />
     </div>
   );

@@ -1,3 +1,4 @@
+// useRobotStore.ts
 import { create } from 'zustand';
 import { 
   Node, 
@@ -70,7 +71,6 @@ export const WIRE_STYLES: Record<string, { color: string; label: string; animate
 };
 
 const FRC_DEVICE_DEFAULTS: Record<string, { label: string; category: FRCNodeData['category']; protocol: string; details: string }> = {
-  // Control & Power
   Battery12V: { label: '12V FRC Battery', category: 'Control & Power', protocol: '12V DC (SB50)', details: '12V 18Ah SLA Battery' },
   MainBreaker120A: { label: '120A Main Breaker', category: 'Control & Power', protocol: 'High Current Pass', details: 'Primary System Power Switch' },
   PDH: { label: 'REV PDH', category: 'Control & Power', protocol: '12V Power / CAN', details: '20 High / 3 Low / 1 Switched' },
@@ -81,13 +81,9 @@ const FRC_DEVICE_DEFAULTS: Record<string, { label: string; category: FRCNodeData
   PressureSwitch: { label: 'Pneumatic Pressure Switch', category: 'Control & Power', protocol: 'Cutoff Switch Signal', details: '120 PSI Auto Cutoff Switch' },
   VRM_MPM: { label: 'Mini Power Module / VRM', category: 'Control & Power', protocol: 'Aux Power', details: 'Regulated Aux Power Board' },
   BuckConverter: { label: '5V/12V Buck Converter', category: 'Control & Power', protocol: 'DC-DC Regulated', details: 'Clean Power for Coprocessors' },
-
-  // CAN & Controllers
   CANivore: { label: 'CTRE CANivore', category: 'Control & Power', protocol: 'USB to CAN FD', details: 'Secondary CAN FD Bus Adapter' },
   CANHub: { label: 'WCP CAN Bus Hub', category: 'Control & Power', protocol: 'CAN Splitter', details: 'CAN Bus Distribution Board' },
   BrushedController: { label: 'Talon SRX / SPARK', category: 'Actuators & Drive', protocol: 'CAN / PWM', details: 'Brushed Motor Controller' },
-
-  // Actuators
   KrakenX60: { label: 'Kraken X60 Motor', category: 'Actuators & Drive', protocol: 'CAN FD / Talon FX', details: 'Brushless Actuator' },
   Falcon500: { label: 'Falcon 500 Motor', category: 'Actuators & Drive', protocol: 'CAN / Talon FX', details: 'Integrated Brushless Motor' },
   SparkMaxNEO: { label: 'NEO + SPARK Max', category: 'Actuators & Drive', protocol: 'CAN Bus / PWM', details: 'Brushless Controller' },
@@ -96,8 +92,6 @@ const FRC_DEVICE_DEFAULTS: Record<string, { label: string; category: FRCNodeData
   PWMServo: { label: 'PWM Servo Motor', category: 'Actuators & Drive', protocol: 'PWM Signal', details: 'Standard Servo' },
   Compressor: { label: 'Pneumatic Compressor', category: 'Actuators & Drive', protocol: '12V Pneumatic Power', details: 'Air Compressor' },
   SolenoidValve: { label: 'Solenoid Valve', category: 'Actuators & Drive', protocol: 'Pneumatic / 12V', details: 'Pneumatic Actuator' },
-
-  // Sensors & Vision
   Limelight: { label: 'Limelight 3/3G', category: 'Sensors & Vision', protocol: 'Ethernet / NetworkTables', details: 'Smart Vision Camera' },
   PhotonVision: { label: 'PhotonVision Camera', category: 'Sensors & Vision', protocol: 'Ethernet / NetworkTables', details: 'Custom Vision Processor' },
   CANcoder: { label: 'CTRE CANcoder', category: 'Sensors & Vision', protocol: 'CAN / CAN FD', details: 'Absolute Encoder' },
@@ -108,8 +102,6 @@ const FRC_DEVICE_DEFAULTS: Record<string, { label: string; category: FRCNodeData
   BeamBreak: { label: 'Beam-Break Sensor', category: 'Sensors & Vision', protocol: 'DIO Optical', details: 'Indexer Game Piece Sensor' },
   TimeOfFlight: { label: 'LaserCAN / ToF Sensor', category: 'Sensors & Vision', protocol: 'CAN / I2C', details: 'Laser Distance Measurement' },
   ColorSensor: { label: 'REV Color Sensor V3', category: 'Sensors & Vision', protocol: 'I2C / CAN', details: 'Color & Proximity Sensor' },
-
-  // Coprocessors
   Coprocessor: { label: 'Linux Coprocessor', category: 'Coprocessors', protocol: 'USB / Ethernet', details: 'Orange Pi / Jetson' },
 };
 
@@ -207,17 +199,103 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
     const sourceNode = nodes.find((n) => n.id === connection.source);
     const targetNode = nodes.find((n) => n.id === connection.target);
 
-    const isCanConnection = connection.sourceHandle?.includes('can') || connection.targetHandle?.includes('can');
+    // ── Rule 0: PDH Power Channel Allocation Fix ──
+    const sourceHandle = connection.sourceHandle;
+    if (sourceNode?.data?.deviceType === 'PDH' && sourceHandle?.startsWith('pwr-')) {
+      const { highMap, lowMap, switchedMap } = getPdhAllocations();
 
-    // ── Rule 1: CAN Bus MUST NOT originate from or connect to the FRC Radio ──
-    if (sourceNode?.data?.deviceType === 'RadioSwitch' || targetNode?.data?.deviceType === 'RadioSwitch') {
-      if (isCanConnection) {
-        alert("Violates FRC Rules: The CAN bus CANNOT start at or connect to the FRC Radio! CAN bus originates exclusively at the roboRIO or CTRE CANivore.");
+      let channelType: 'high' | 'low' | 'switched' | undefined;
+      let assignedPort: number | undefined;
+      let strokeColor = '#ef4444';
+      let strokeDasharray: string | undefined;
+
+      if (sourceHandle === 'pwr-high-out') {
+        channelType = 'high';
+        for (let i = 0; i < MAX_HIGH_CHANNELS; i++) {
+          if (!highMap.has(i)) {
+            assignedPort = i;
+            break;
+          }
+        }
+        if (assignedPort === undefined) {
+          alert("PDH High-Current Limit Reached: All 20 40A ATO channels (Ports 0–19) are occupied!");
+          return;
+        }
+        strokeColor = '#ef4444';
+      } else if (sourceHandle === 'pwr-low-out') {
+        channelType = 'low';
+        for (let i = 20; i < 20 + MAX_LOW_CHANNELS; i++) {
+          if (!lowMap.has(i)) {
+            assignedPort = i;
+            break;
+          }
+        }
+        if (assignedPort === undefined) {
+          alert("PDH Low-Current Limit Reached: All 3 15A ATM channels (Ports 20–22) are occupied!");
+          return;
+        }
+        strokeColor = '#f97316';
+      } else if (sourceHandle === 'pwr-switched-out') {
+        channelType = 'switched';
+        if (!switchedMap.has(23)) {
+          assignedPort = 23;
+        } else {
+          alert("PDH Switchable Channel Occupied: Port 23 is already in use!");
+          return;
+        }
+        strokeColor = '#e11d48';
+        strokeDasharray = '4 2';
+      }
+
+      if (channelType && assignedPort !== undefined) {
+        const channelTypeName = channelType === 'high' ? 'High' : channelType === 'low' ? 'Low' : 'Switchable';
+        const portLabel = `Port #${assignedPort} (${channelTypeName})`;
+
+        // Update target node power channel display label
+        const updatedNodes = get().nodes.map((n) => {
+          if (n.id === connection.target) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                powerChannel: portLabel,
+              },
+            };
+          }
+          return n;
+        });
+
+        set({
+          nodes: updatedNodes,
+          edges: addEdge(
+            {
+              ...connection,
+              type: 'smoothstep',
+              animated: false,
+              label: portLabel,
+              labelStyle: { fill: '#f8fafc', fontSize: 10, fontWeight: 700, fontFamily: 'monospace' },
+              labelBgStyle: { fill: '#0f172a', fillOpacity: 0.9, rx: 4, ry: 4 },
+              style: { stroke: strokeColor, strokeWidth: 3, strokeDasharray },
+              data: { channelType, channelNum: assignedPort },
+            },
+            get().edges
+          ),
+        });
         return;
       }
     }
 
-    // ── Rule 2: FRC Radio Dedicated Port Allocation Rules ──
+    const isCanConnection = connection.sourceHandle?.includes('can') || connection.targetHandle?.includes('can');
+
+    // Rule 1: CAN Bus MUST NOT originate from or connect to the FRC Radio
+    if (sourceNode?.data?.deviceType === 'RadioSwitch' || targetNode?.data?.deviceType === 'RadioSwitch') {
+      if (isCanConnection) {
+        alert("Violates FRC Rules: The CAN bus CANNOT start at or connect to the FRC Radio!");
+        return;
+      }
+    }
+
+    // Rule 2: FRC Radio Dedicated Port Allocation Rules
     const isRadioSource = sourceNode?.data?.deviceType === 'RadioSwitch';
     const isRadioTarget = targetNode?.data?.deviceType === 'RadioSwitch';
 
@@ -225,15 +303,13 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
       const radioHandle = isRadioSource ? connection.sourceHandle : connection.targetHandle;
       const otherNode = isRadioSource ? targetNode : sourceNode;
 
-      // Handle: Radio RIO Port (Dedicated to roboRIO only)
       if (radioHandle === 'eth-rio') {
         if (otherNode?.data?.deviceType !== 'roboRIO') {
-          alert("Violates FRC Rules: The Radio's RIO port is reserved exclusively for the RoboRIO! It cannot connect to any extra downstream device.");
+          alert("Violates FRC Rules: The Radio's RIO port is reserved exclusively for the RoboRIO!");
           return;
         }
       }
 
-      // Handle: Radio AUX Port (1 Available downstream slot for coprocessor, camera, or switch)
       if (radioHandle === 'eth-aux') {
         const auxAlreadyOccupied = edges.some(
           (e) => (e.sourceHandle === 'eth-aux' && e.source === (isRadioSource ? sourceNode.id : targetNode.id)) ||
@@ -241,13 +317,13 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
         );
 
         if (auxAlreadyOccupied) {
-          alert("Radio AUX Port Occupied! The AUX port only supports 1 downstream connection (connect an Ethernet switch to add more devices).");
+          alert("Radio AUX Port Occupied! The AUX port only supports 1 downstream connection.");
           return;
         }
       }
     }
 
-    // ── Rule 3: Main Power Sequence (Battery -> 120A Main Breaker -> PDH) ──
+    // Rule 3: Main Power Sequence
     if (sourceNode?.data?.deviceType === 'Battery12V') {
       if (targetNode?.data?.deviceType !== 'MainBreaker120A') {
         alert("Violates FRC Rules: The 12V Battery MUST connect directly to the 120A Main Circuit Breaker input!");
@@ -294,7 +370,7 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
       return;
     }
 
-    // ── Rule 4: Ethernet Connections ──
+    // Rule 4: Ethernet Connections
     const isEthConnection = connection.sourceHandle?.includes('eth') || connection.targetHandle?.includes('eth');
     if (isEthConnection) {
       set({
@@ -314,7 +390,7 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
       return;
     }
 
-    // ── Rule 5: Standard CAN Bus & Termination ──
+    // Rule 5: Standard CAN Bus & Termination
     const isCanTerminationPoint = targetNode?.data?.deviceType === 'PDH' && connection.targetHandle === 'can-term';
     if (isCanConnection) {
       let label = 'CAN Bus [Loop]';

@@ -5,7 +5,12 @@ import { useRobotStore, FRCNodeData } from '../store/useRobotStore';
 
 export const ControlHubNode: React.FC<NodeProps> = ({ id, data }) => {
   const nodeData = data as unknown as FRCNodeData;
-  const { removeNode, getPdhAllocations } = useRobotStore();
+  const removeNode = useRobotStore((state) => state.removeNode);
+  const getPdhAllocations = useRobotStore((state) => state.getPdhAllocations);
+  
+  // Subscribe directly to edges so PDH re-renders when connections change
+  const edges = useRobotStore((state) => state.edges);
+
   const deviceType = nodeData.deviceType || '';
 
   // ── VH-109 FRC Radio Node ──
@@ -28,7 +33,6 @@ export const ControlHubNode: React.FC<NodeProps> = ({ id, data }) => {
         </div>
 
         <div className="mt-2.5 space-y-2">
-          {/* Power / Passive PoE Input */}
           <div className="flex items-center justify-between text-[9px] font-mono text-red-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-red-500/30 relative">
             <Handle
               type="target"
@@ -40,7 +44,6 @@ export const ControlHubNode: React.FC<NodeProps> = ({ id, data }) => {
             <span className="text-slate-500 text-[8px]">VRM / RPM / PDH</span>
           </div>
 
-          {/* RIO Port: Dedicated RoboRIO Link */}
           <div className="flex items-center justify-between text-[9px] font-mono text-emerald-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-emerald-500/40 relative">
             <Handle
               type="target"
@@ -60,7 +63,6 @@ export const ControlHubNode: React.FC<NodeProps> = ({ id, data }) => {
             </span>
           </div>
 
-          {/* AUX Port: Single downstream accessory slot */}
           <div className="flex items-center justify-between text-[9px] font-mono text-emerald-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-emerald-500/40 relative">
             <div className="flex items-center gap-1">
               <Share2 className="w-3 h-3 text-emerald-400 shrink-0" />
@@ -154,7 +156,7 @@ export const ControlHubNode: React.FC<NodeProps> = ({ id, data }) => {
 
   // ── REV Power Distribution Hub (PDH) Node ──
   if (deviceType === 'PDH') {
-    const { highMap, lowMap, switchedMap } = getPdhAllocations();
+    const { highMap = new Map(), lowMap = new Map(), switchedMap = new Map() } = getPdhAllocations() || {};
 
     return (
       <div className="relative min-w-[340px] bg-slate-900 border-2 border-amber-500/80 rounded-xl p-4 shadow-2xl">
