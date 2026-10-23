@@ -1,12 +1,88 @@
 import React from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
-import { Cpu, Zap, Trash2, Power, Wifi, ShieldAlert, Radio } from 'lucide-react';
-import { useRobotStore, FRCNodeData, MAX_HIGH_CHANNELS } from '../store/useRobotStore';
+import { Cpu, Zap, Trash2, Power, Wifi, ShieldAlert, Radio, Lock, Share2 } from 'lucide-react';
+import { useRobotStore, FRCNodeData } from '../store/useRobotStore';
 
 export const ControlHubNode: React.FC<NodeProps> = ({ id, data }) => {
   const nodeData = data as unknown as FRCNodeData;
   const { removeNode, getPdhAllocations } = useRobotStore();
   const deviceType = nodeData.deviceType || '';
+
+  // ── VH-109 FRC Radio Node ──
+  if (deviceType === 'RadioSwitch') {
+    return (
+      <div className="relative min-w-[320px] bg-slate-900 border-2 border-emerald-500/80 rounded-xl p-3.5 shadow-2xl">
+        <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <Wifi className="w-5 h-5 text-emerald-400" />
+            <div>
+              <h3 className="font-mono text-xs font-black text-slate-100">{nodeData.label || id}</h3>
+              <span className="text-[9px] font-mono text-emerald-400 uppercase tracking-wider block font-bold">
+                VH-109 FRC Radio (2-Port)
+              </span>
+            </div>
+          </div>
+          <button onClick={() => removeNode(id)} className="text-slate-500 hover:text-red-400 transition">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <div className="mt-2.5 space-y-2">
+          {/* Power / Passive PoE Input */}
+          <div className="flex items-center justify-between text-[9px] font-mono text-red-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-red-500/30 relative">
+            <Handle
+              type="target"
+              position={Position.Left}
+              id="pwr-12v-in"
+              className="w-3.5 h-3.5 !bg-red-500 !border-2 !border-slate-950 rounded-full !left-[-12px]"
+            />
+            <span>12V Power / Passive PoE In</span>
+            <span className="text-slate-500 text-[8px]">VRM / RPM / PDH</span>
+          </div>
+
+          {/* RIO Port: Dedicated RoboRIO Link */}
+          <div className="flex items-center justify-between text-[9px] font-mono text-emerald-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-emerald-500/40 relative">
+            <Handle
+              type="target"
+              position={Position.Left}
+              id="eth-rio"
+              className="w-3.5 h-3.5 !bg-emerald-500 !border-2 !border-slate-950 rounded-full !left-[-12px]"
+            />
+            <div className="flex items-center gap-1">
+              <Lock className="w-3 h-3 text-amber-400 shrink-0" />
+              <div>
+                <span className="font-bold block">RIO Port (Dedicated)</span>
+                <span className="text-slate-500 text-[8px]">RoboRIO Uplink + Passive PoE</span>
+              </div>
+            </div>
+            <span className="text-amber-400 font-bold text-[8px] bg-amber-950/60 px-1 py-0.5 rounded border border-amber-500/30">
+              No Extra Device
+            </span>
+          </div>
+
+          {/* AUX Port: Single downstream accessory slot */}
+          <div className="flex items-center justify-between text-[9px] font-mono text-emerald-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-emerald-500/40 relative">
+            <div className="flex items-center gap-1">
+              <Share2 className="w-3 h-3 text-emerald-400 shrink-0" />
+              <div>
+                <span className="font-bold block">AUX Port (Auxiliary)</span>
+                <span className="text-slate-500 text-[8px]">Coprocessor / Limelight / Switch</span>
+              </div>
+            </div>
+            <span className="text-emerald-400 font-bold text-[8px] bg-emerald-950/60 px-1 py-0.5 rounded border border-emerald-500/30">
+              1 Slot Available
+            </span>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id="eth-aux"
+              className="w-3.5 h-3.5 !bg-emerald-500 !border-2 !border-slate-950 rounded-full !right-[-12px]"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ── 120A Main Circuit Breaker Node ──
   if (deviceType === 'MainBreaker120A') {
@@ -157,7 +233,6 @@ export const ControlHubNode: React.FC<NodeProps> = ({ id, data }) => {
           <span className="text-orange-300 font-bold text-[8px]">PDH Low Ch (20–22)</span>
         </div>
 
-        {/* Robot Signal Light (RSL) Port */}
         <div className="flex items-center justify-between text-[9px] font-mono text-yellow-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-yellow-500/40 relative">
           <span className="font-bold">RSL Status Port</span>
           <span className="text-yellow-300 text-[8px]">To Allen-Bradley RSL</span>
@@ -173,7 +248,7 @@ export const ControlHubNode: React.FC<NodeProps> = ({ id, data }) => {
         <div className="flex items-center justify-between text-[9px] font-mono text-emerald-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-emerald-500/30 relative">
           <Handle type="target" position={Position.Left} id="eth-in" className="w-3.5 h-3.5 !bg-emerald-500 !border-2 !border-slate-950 rounded-full !left-[-12px]" />
           <span className="font-bold">Ethernet Port</span>
-          <span className="text-slate-500 text-[8px]">To Radio/Switch</span>
+          <span className="text-slate-500 text-[8px]">To Radio RIO Port</span>
           <Handle type="source" position={Position.Right} id="eth-out" className="w-3.5 h-3.5 !bg-emerald-500 !border-2 !border-slate-950 rounded-full !right-[-12px]" />
         </div>
       </div>

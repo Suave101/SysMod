@@ -22,19 +22,50 @@ export function verifySystemProperties(nodes: Node<FRCNodeData>[], edges: Edge[]
   const mainBreakerNode = nodes.find((n) => n.data?.deviceType === 'MainBreaker120A');
   const pdhNode = nodes.find((n) => n.data?.deviceType === 'PDH');
   const rioNode = nodes.find((n) => n.data?.deviceType === 'roboRIO');
+  const radioNode = nodes.find((n) => n.data?.deviceType === 'RadioSwitch');
   const rslNode = nodes.find((n) => n.data?.deviceType === 'RSL');
-  const phNode = nodes.find((n) => n.data?.deviceType === 'PneumaticsHub');
-  const pressureSwitchNode = nodes.find((n) => n.data?.deviceType === 'PressureSwitch');
-  const coprocessors = nodes.filter((n) => n.data?.deviceType === 'Coprocessor');
-  const buckConverters = nodes.filter((n) => n.data?.deviceType === 'BuckConverter');
 
-  // ── Rule 1: Mandatory Main Power Sequence (Battery -> 120A Breaker -> PDH) ──
+  // ── Rule 1: CAN Bus Origin Verification ──
+  edges.forEach((e) => {
+    if (e.source === radioNode?.id && (e.sourceHandle?.includes('can') || e.targetHandle?.includes('can'))) {
+      issues.push({
+        id: 'illegal-radio-can',
+        severity: 'error',
+        title: 'Illegal CAN Bus Connection at Radio',
+        message: 'The CAN bus CANNOT originate or connect to the FRC Radio! Standard CAN originates at the roboRIO and CTRE CAN FD originates at the CANivore.',
+        nodeIds: [radioNode.id],
+      });
+    }
+  });
+
+  // ── Rule 2: Radio RIO Port Reservation ──
+  if (radioNode) {
+    const rioPortEdge = edges.find((e) => 
+      (e.source === radioNode.id && e.sourceHandle === 'eth-rio') ||
+      (e.target === radioNode.id && e.targetHandle === 'eth-rio')
+    );
+
+    if (rioPortEdge) {
+      const connectedNodeId = rioPortEdge.source === radioNode.id ? rioPortEdge.target : rioPortEdge.source;
+      if (connectedNodeId !== rioNode?.id) {
+        issues.push({
+          id: 'radio-rio-port-violation',
+          severity: 'error',
+          title: 'Radio RIO Port Violation',
+          message: 'The Radio RIO port is strictly reserved for the roboRIO controller! Non-roboRIO devices must connect to the AUX port.',
+          nodeIds: [radioNode.id, connectedNodeId],
+        });
+      }
+    }
+  }
+
+  // ── Rule 3: Main Power Sequence (Battery -> 120A Breaker -> PDH) ──
   if (!batteryNode) {
     issues.push({ id: 'no-battery', severity: 'error', title: 'Missing 12V Battery', message: 'No 12V FRC Battery found on canvas.' });
   }
 
   if (!mainBreakerNode) {
-    issues.push({ id: 'no-main-breaker', severity: 'error', title: 'Missing 120A Main Circuit Breaker', message: 'Mandatory 120A Main Breaker is missing! Battery must pass through this breaker to power the PDH.' });
+    issues.push({ id: 'no-main-breaker', severity: 'error', title: 'Missing 120A Main Circuit Breaker', message: 'Mandatory 120A Main Breaker is missing! Battery power must pass through this breaker to feed the PDH.' });
   } else if (batteryNode && mainBreakerNode) {
     const battToBreaker = edges.some((e) => e.source === batteryNode.id && e.target === mainBreakerNode.id);
     if (!battToBreaker) {
@@ -49,7 +80,7 @@ export function verifySystemProperties(nodes: Node<FRCNodeData>[], edges: Edge[]
     }
   }
 
-  // ── Rule 2: Mandatory Robot Signal Light (RSL) ──
+  // ── Rule 4: Mandatory Robot Signal Light (RSL) ──
   if (!rioNode) {
     issues.push({ id: 'no-roborio', severity: 'error', title: 'Missing roboRIO 2.0', message: 'No roboRIO controller found.' });
   } else {
@@ -61,32 +92,6 @@ export function verifySystemProperties(nodes: Node<FRCNodeData>[], edges: Edge[]
         issues.push({ id: 'rsl-unconnected', severity: 'error', title: 'Unconnected RSL', message: 'Robot Signal Light must connect to the roboRIO dedicated "rsl-out" header.' });
       }
     }
-  }
-
-  // ── Rule 3: Pneumatic System Pressure Switch Safety ──
-  const hasPneumatics = nodes.some((n) => ['Compressor', 'SolenoidValve'].includes(n.data?.deviceType || ''));
-  if (hasPneumatics) {
-    if (!phNode) {
-      issues.push({ id: 'missing-ph', severity: 'error', title: 'Missing Pneumatics Hub', message: 'Pneumatic actuators require a REV Pneumatics Hub controller.' });
-    } else if (!pressureSwitchNode) {
-      issues.push({ id: 'missing-pressure-switch', severity: 'error', title: 'Missing Pneumatic Pressure Switch', message: 'Mandatory 120 PSI Pressure Switch is missing! Required for automated compressor cutoff.' });
-    }
-  }
-
-  // ── Rule 4: Coprocessor Regulated Power Protection ──
-  if (coprocessors.length > 0) {
-    coprocessors.forEach((coproc) => {
-      const poweredByBuck = edges.some((e) => e.target === coproc.id && buckConverters.some((b) => b.id === e.source));
-      if (!poweredByBuck) {
-        issues.push({
-          id: `coproc-unregulated-${coproc.id}`,
-          severity: 'warning',
-          title: `Unregulated Power: ${coproc.data?.label}`,
-          message: 'Coprocessors (Orange Pi/Jetson) should be powered through a 5V/12V DC-DC Buck Converter to prevent power spikes or brownout resets.',
-          nodeIds: [coproc.id],
-        });
-      }
-    });
   }
 
   // ── Rule 5: CAN Bus 120Ω Termination ──

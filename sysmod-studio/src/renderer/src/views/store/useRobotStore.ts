@@ -76,7 +76,7 @@ const FRC_DEVICE_DEFAULTS: Record<string, { label: string; category: FRCNodeData
   PDH: { label: 'REV PDH', category: 'Control & Power', protocol: '12V Power / CAN', details: '20 High / 3 Low / 1 Switched' },
   roboRIO: { label: 'roboRIO 2.0', category: 'Control & Power', protocol: 'CAN / Eth / USB / DIO', details: 'Main Robot Controller' },
   RSL: { label: 'Robot Signal Light (RSL)', category: 'Control & Power', protocol: 'RSL Signal', details: 'Allen-Bradley Status Light' },
-  RadioSwitch: { label: 'VH-109 Radio / Eth Switch', category: 'Control & Power', protocol: 'Ethernet', details: 'Managed Ethernet Hub' },
+  RadioSwitch: { label: 'VH-109 FRC Radio', category: 'Control & Power', protocol: 'Ethernet / Passive PoE', details: '2-Port Managed FRC Radio' },
   PneumaticsHub: { label: 'Pneumatics Hub', category: 'Control & Power', protocol: 'CAN / Pneumatic', details: 'PCM/PH Controller' },
   PressureSwitch: { label: 'Pneumatic Pressure Switch', category: 'Control & Power', protocol: 'Cutoff Switch Signal', details: '120 PSI Auto Cutoff Switch' },
   VRM_MPM: { label: 'Mini Power Module / VRM', category: 'Control & Power', protocol: 'Aux Power', details: 'Regulated Aux Power Board' },
@@ -104,7 +104,6 @@ const FRC_DEVICE_DEFAULTS: Record<string, { label: string; category: FRCNodeData
   ThroughBore: { label: 'REV Through Bore', category: 'Sensors & Vision', protocol: 'DIO Duty Cycle', details: 'Quadrature Encoder' },
   Pigeon2: { label: 'Pigeon 2.0 IMU', category: 'Sensors & Vision', protocol: 'CAN / CAN FD', details: '9-Axis Gyroscope' },
   NavX2: { label: 'navX2-MXP Gyro', category: 'Sensors & Vision', protocol: 'SPI / CAN', details: 'Precision Gyro' },
-  CANdle: { label: 'CTRE CANdle', category: 'Sensors & Vision', protocol: 'CAN Bus / 12V', details: 'LED Driver Controller' },
   LimitSwitch: { label: 'Limit Switch', category: 'Sensors & Vision', protocol: 'DIO Contact', details: 'Physical Hardstop Sensor' },
   BeamBreak: { label: 'Beam-Break Sensor', category: 'Sensors & Vision', protocol: 'DIO Optical', details: 'Indexer Game Piece Sensor' },
   TimeOfFlight: { label: 'LaserCAN / ToF Sensor', category: 'Sensors & Vision', protocol: 'CAN / I2C', details: 'Laser Distance Measurement' },
@@ -204,11 +203,51 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
   },
 
   onConnect: (connection) => {
-    const { nodes, getPdhAllocations } = get();
+    const { nodes, edges, getPdhAllocations } = get();
     const sourceNode = nodes.find((n) => n.id === connection.source);
     const targetNode = nodes.find((n) => n.id === connection.target);
 
-    // ── 1. Main Power Routing (Battery -> 120A Main Breaker -> PDH) ──
+    const isCanConnection = connection.sourceHandle?.includes('can') || connection.targetHandle?.includes('can');
+
+    // ── Rule 1: CAN Bus MUST NOT originate from or connect to the FRC Radio ──
+    if (sourceNode?.data?.deviceType === 'RadioSwitch' || targetNode?.data?.deviceType === 'RadioSwitch') {
+      if (isCanConnection) {
+        alert("Violates FRC Rules: The CAN bus CANNOT start at or connect to the FRC Radio! CAN bus originates exclusively at the roboRIO or CTRE CANivore.");
+        return;
+      }
+    }
+
+    // ── Rule 2: FRC Radio Dedicated Port Allocation Rules ──
+    const isRadioSource = sourceNode?.data?.deviceType === 'RadioSwitch';
+    const isRadioTarget = targetNode?.data?.deviceType === 'RadioSwitch';
+
+    if (isRadioSource || isRadioTarget) {
+      const radioHandle = isRadioSource ? connection.sourceHandle : connection.targetHandle;
+      const otherNode = isRadioSource ? targetNode : sourceNode;
+
+      // Handle: Radio RIO Port (Dedicated to roboRIO only)
+      if (radioHandle === 'eth-rio') {
+        if (otherNode?.data?.deviceType !== 'roboRIO') {
+          alert("Violates FRC Rules: The Radio's RIO port is reserved exclusively for the RoboRIO! It cannot connect to any extra downstream device.");
+          return;
+        }
+      }
+
+      // Handle: Radio AUX Port (1 Available downstream slot for coprocessor, camera, or switch)
+      if (radioHandle === 'eth-aux') {
+        const auxAlreadyOccupied = edges.some(
+          (e) => (e.sourceHandle === 'eth-aux' && e.source === (isRadioSource ? sourceNode.id : targetNode.id)) ||
+                 (e.targetHandle === 'eth-aux' && e.target === (isRadioSource ? sourceNode.id : targetNode.id))
+        );
+
+        if (auxAlreadyOccupied) {
+          alert("Radio AUX Port Occupied! The AUX port only supports 1 downstream connection (connect an Ethernet switch to add more devices).");
+          return;
+        }
+      }
+    }
+
+    // ── Rule 3: Main Power Sequence (Battery -> 120A Main Breaker -> PDH) ──
     if (sourceNode?.data?.deviceType === 'Battery12V') {
       if (targetNode?.data?.deviceType !== 'MainBreaker120A') {
         alert("Violates FRC Rules: The 12V Battery MUST connect directly to the 120A Main Circuit Breaker input!");
@@ -255,18 +294,19 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
       return;
     }
 
-    // ── 2. Buck Converter Power Output ──
-    if (sourceNode?.data?.deviceType === 'BuckConverter') {
+    // ── Rule 4: Ethernet Connections ──
+    const isEthConnection = connection.sourceHandle?.includes('eth') || connection.targetHandle?.includes('eth');
+    if (isEthConnection) {
       set({
         edges: addEdge(
           {
             ...connection,
             type: 'smoothstep',
-            animated: false,
-            label: '5V/12V Regulated DC',
+            animated: true,
+            label: 'Ethernet Link',
             labelStyle: { fill: '#f8fafc', fontSize: 10, fontWeight: 700, fontFamily: 'monospace' },
             labelBgStyle: { fill: '#0f172a', fillOpacity: 0.9, rx: 4, ry: 4 },
-            style: { stroke: '#38bdf8', strokeWidth: 2.5 },
+            style: { stroke: '#10b981', strokeWidth: 2.5 },
           },
           get().edges
         ),
@@ -274,12 +314,12 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
       return;
     }
 
-    // ── 3. RSL (Robot Signal Light) Wiring ──
-    if (sourceNode?.data?.deviceType === 'roboRIO' && connection.sourceHandle === 'rsl-out') {
-      if (targetNode?.data?.deviceType !== 'RSL') {
-        alert("roboRIO RSL header can only connect to the Robot Signal Light (RSL).");
-        return;
-      }
+    // ── Rule 5: Standard CAN Bus & Termination ──
+    const isCanTerminationPoint = targetNode?.data?.deviceType === 'PDH' && connection.targetHandle === 'can-term';
+    if (isCanConnection) {
+      let label = 'CAN Bus [Loop]';
+      if (connection.sourceHandle === 'can-start') label = 'CAN Bus [RIO Start]';
+      if (isCanTerminationPoint) label = 'CAN Bus [120Ω Terminated]';
 
       set({
         edges: addEdge(
@@ -287,10 +327,11 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
             ...connection,
             type: 'smoothstep',
             animated: true,
-            label: 'RSL Status Signal',
+            label,
             labelStyle: { fill: '#f8fafc', fontSize: 10, fontWeight: 700, fontFamily: 'monospace' },
             labelBgStyle: { fill: '#0f172a', fillOpacity: 0.9, rx: 4, ry: 4 },
-            style: { stroke: '#facc15', strokeWidth: 2.5 },
+            style: { stroke: isCanTerminationPoint ? '#f59e0b' : '#eab308', strokeWidth: 2.5 },
+            data: { isCanTerminator: isCanTerminationPoint },
           },
           get().edges
         ),
@@ -298,153 +339,7 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
       return;
     }
 
-    // ── 4. CANivore CAN FD Secondary Bus ──
-    if (sourceNode?.data?.deviceType === 'CANivore') {
-      if (connection.sourceHandle === 'can-fd-start') {
-        set({
-          edges: addEdge(
-            {
-              ...connection,
-              type: 'smoothstep',
-              animated: true,
-              label: 'CTRE CAN FD Bus (8Mbps)',
-              labelStyle: { fill: '#f8fafc', fontSize: 10, fontWeight: 700, fontFamily: 'monospace' },
-              labelBgStyle: { fill: '#0f172a', fillOpacity: 0.9, rx: 4, ry: 4 },
-              style: { stroke: '#f59e0b', strokeWidth: 3 },
-            },
-            get().edges
-          ),
-        });
-        return;
-      }
-    }
-
-    // ── 5. PDH Breaker Channel Allocations ──
-    const isPdhSource = sourceNode?.data?.deviceType === 'PDH';
-    const isTargetPowerIn = connection.targetHandle?.includes('pwr');
-
-    if (isPdhSource && isTargetPowerIn) {
-      const { highMap, lowMap, switchedMap } = getPdhAllocations();
-      const isTargetRoboRIO = targetNode?.data?.deviceType === 'roboRIO';
-
-      if (connection.sourceHandle === 'pwr-high-out') {
-        if (isTargetRoboRIO) {
-          alert("Violates FRC Rules: roboRIO cannot run on a high-current breaker port (20A-40A)! Connect to a 15A Low-Current Port (Ports 20-22).");
-          return;
-        }
-
-        let nextChan = -1;
-        for (let i = 0; i < MAX_HIGH_CHANNELS; i++) {
-          if (!highMap.has(i)) {
-            nextChan = i;
-            break;
-          }
-        }
-
-        if (nextChan === -1) {
-          alert(`All ${MAX_HIGH_CHANNELS} High-Current Channels (Ports 0-19) are occupied!`);
-          return;
-        }
-
-        const channelLabel = `Port #${nextChan} (High 40A)`;
-        if (targetNode) {
-          set({
-            nodes: nodes.map((n) => n.id === targetNode.id ? { ...n, data: { ...n.data, powerChannel: channelLabel } } : n),
-          });
-        }
-
-        set({
-          edges: addEdge(
-            {
-              ...connection,
-              type: 'smoothstep',
-              label: channelLabel,
-              labelStyle: { fill: '#f8fafc', fontSize: 10, fontWeight: 700, fontFamily: 'monospace' },
-              labelBgStyle: { fill: '#0f172a', fillOpacity: 0.9, rx: 4, ry: 4 },
-              style: { stroke: '#ef4444', strokeWidth: 3 },
-              data: { channelType: 'high', channelNum: nextChan },
-            },
-            get().edges
-          ),
-        });
-        return;
-      }
-
-      if (connection.sourceHandle === 'pwr-low-out') {
-        let nextChan = -1;
-        for (let i = 20; i < 20 + MAX_LOW_CHANNELS; i++) {
-          if (!lowMap.has(i)) {
-            nextChan = i;
-            break;
-          }
-        }
-
-        if (nextChan === -1) {
-          alert(`All ${MAX_LOW_CHANNELS} Low-Current Channels (Ports 20-22) are occupied!`);
-          return;
-        }
-
-        const channelLabel = `Port #${nextChan} (Low 15A)`;
-        if (targetNode) {
-          set({
-            nodes: nodes.map((n) => n.id === targetNode.id ? { ...n, data: { ...n.data, powerChannel: channelLabel } } : n),
-          });
-        }
-
-        set({
-          edges: addEdge(
-            {
-              ...connection,
-              type: 'smoothstep',
-              label: channelLabel,
-              labelStyle: { fill: '#f8fafc', fontSize: 10, fontWeight: 700, fontFamily: 'monospace' },
-              labelBgStyle: { fill: '#0f172a', fillOpacity: 0.9, rx: 4, ry: 4 },
-              style: { stroke: '#f97316', strokeWidth: 2.5 },
-              data: { channelType: 'low', channelNum: nextChan },
-            },
-            get().edges
-          ),
-        });
-        return;
-      }
-
-      if (connection.sourceHandle === 'pwr-switched-out') {
-        if (isTargetRoboRIO) {
-          alert("Violates FRC Rules: roboRIO cannot be plugged into the software-switchable channel!");
-          return;
-        }
-
-        if (switchedMap.has(23)) {
-          alert("The Switchable Channel (Port 23) is already occupied!");
-          return;
-        }
-
-        const channelLabel = `Port #23 (Switchable 15A)`;
-        if (targetNode) {
-          set({
-            nodes: nodes.map((n) => n.id === targetNode.id ? { ...n, data: { ...n.data, powerChannel: channelLabel } } : n),
-          });
-        }
-
-        set({
-          edges: addEdge(
-            {
-              ...connection,
-              type: 'smoothstep',
-              label: channelLabel,
-              labelStyle: { fill: '#f8fafc', fontSize: 10, fontWeight: 700, fontFamily: 'monospace' },
-              labelBgStyle: { fill: '#0f172a', fillOpacity: 0.9, rx: 4, ry: 4 },
-              style: { stroke: '#e11d48', strokeWidth: 2.5, strokeDasharray: '4 2' },
-              data: { channelType: 'switched', channelNum: 23 },
-            },
-            get().edges
-          ),
-        });
-        return;
-      }
-    }
-
-    // Default Connection Handling
+    // Default Connection
     set({
       edges: addEdge(
         {
