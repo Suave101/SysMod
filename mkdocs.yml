@@ -1,0 +1,10 @@
+site_name: SysMod Studio
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Design Brief: getting-started/design-brief.md
+      - Moscow Selector: getting-started/moscow-selector.md
+theme: readthedocs
+markdown_extensions:
+  - admonition
