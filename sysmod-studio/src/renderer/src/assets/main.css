@@ -1,4 +1,5 @@
 @import "tailwindcss"; /* 1. Injects the Tailwind v4 Engine */
+@plugin "daisyui";
 @import './base.css';
 
 /* 2. Global Layout Reset to force a full-screen application window */
