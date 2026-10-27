@@ -23,7 +23,6 @@ export default function Moscow() {
   });
   const [warning, setWarning] = useState(false);
 
-  // Load criteria from DesignBrief or prior saved MoSCoW board state
   useEffect(() => {
     const loadSavedData = async () => {
       let savedData: any = null;
@@ -38,7 +37,6 @@ export default function Moscow() {
         if (savedData.moscow) {
           setColumns(savedData.moscow);
         } else if (savedData.criteria && savedData.criteria.length > 0) {
-          // If they have raw criteria from Page 1, import them into 'Could' as a starting point
           const importedTasks: Task[] = savedData.criteria.map((c: any) => ({
             id: c.id || `crit-${Date.now()}-${Math.random()}`,
             content: c.text ? `[${c.category}] ${c.text}` : c.content
@@ -56,7 +54,6 @@ export default function Moscow() {
     loadSavedData();
   }, []);
 
-  // Show warning if Must Have exceeds 60% of requirements
   useEffect(() => {
     const total = columns.must.length + columns.should.length + columns.could.length + columns.wont.length;
     if (total > 0 && (columns.must.length / total) > 0.6) {
@@ -125,14 +122,14 @@ export default function Moscow() {
       localStorage.setItem('workspace-data', JSON.stringify(payload));
     }
 
-    navigate('/brainstorming'); // Proceed to Brainstorming (Decision Matrix)
+    navigate('/brainstorming');
   };
 
   const columnConfig = {
-    must: { title: '🔴 MUST HAVE', desc: 'Critical requirements' },
-    should: { title: '🟡 SHOULD HAVE', desc: 'High priority, but not critical' },
+    must: { title: '🔴 MUST HAVE', desc: 'Critical FRC robot requirements' },
+    should: { title: '🟡 SHOULD HAVE', desc: 'High priority match capabilities' },
     could: { title: '🟢 COULD HAVE', desc: 'Nice-to-have stretch goals' },
-    wont: { title: '⚪ WON\'T HAVE', desc: 'Explicitly excluded' }
+    wont: { title: '⚪ WON\'T HAVE', desc: 'Explicitly excluded features' }
   };
 
   return (
@@ -140,8 +137,8 @@ export default function Moscow() {
       <ProcessTimeline currentStep="moscow" />
       <header className="border-b border-slate-800/60 pb-6 mb-8 shrink-0 flex justify-between items-end">
         <div>
-          <span className="bg-emerald-500/20 text-emerald-400 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider mb-2 inline-block">
-            PLTW Portfolio Component
+          <span className="bg-indigo-500/20 text-indigo-400 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider mb-2 inline-block">
+            FRC Portfolio Component
           </span>
           <h1 className="text-3xl font-extrabold text-white tracking-tight uppercase">Strategic Prioritization (MoSCoW)</h1>
           <p className="text-sm text-slate-400 mt-2 font-medium">Phase 2: Establish Weights for the Decision Matrix</p>
@@ -174,7 +171,7 @@ export default function Moscow() {
           type="text" 
           value={newTask}
           onChange={(e) => setNewTask(e.target.value)}
-          placeholder="Enter a robot capability or constraint..."
+          placeholder="Enter an FRC robot capability or constraint (e.g., Swerve 45° Lock / Limelight Reef Tag Alignment)..."
           className="flex-1 bg-slate-800/30 border border-slate-700/50 rounded-lg p-4 text-slate-200 focus:outline-none focus:border-indigo-500 transition-all shadow-inner"
         />
         <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-6 rounded-lg transition flex items-center gap-2">

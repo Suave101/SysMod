@@ -26,7 +26,7 @@ export default function Brainstorming() {
   const navigate = useNavigate();
 
   const [criteria, setCriteria] = useState<WeightedCriterion[]>([]);
-  const [spendingLimit, setSpendingLimit] = useState('0');
+  const [spendingLimit, setSpendingLimit] = useState('4000');
   const [subsystems, setSubsystems] = useState<Subsystem[]>([]);
   const [newSubName, setNewSubName] = useState('');
   const [newSubBudget, setNewSubBudget] = useState('');
@@ -34,7 +34,7 @@ export default function Brainstorming() {
   const [alternatives, setAlternatives] = useState<Alternative[]>([]);
   const [newAltName, setNewAltName] = useState('');
 
-  // Load state and map the MoSCoW priorities to weights
+  // Load state and map MoSCoW priorities to weights
   useEffect(() => {
     const processData = (data: any) => {
       if (!data) return;
@@ -46,25 +46,21 @@ export default function Brainstorming() {
       if (data.moscow) {
         const weightedList: WeightedCriterion[] = [];
         
-        // Must Have = Weight 3
         if (data.moscow.must) {
           data.moscow.must.forEach((item: any) => {
             weightedList.push({ id: item.id, text: item.content, weight: 3, category: 'Must' });
           });
         }
-        // Should Have = Weight 2
         if (data.moscow.should) {
           data.moscow.should.forEach((item: any) => {
             weightedList.push({ id: item.id, text: item.content, weight: 2, category: 'Should' });
           });
         }
-        // Could Have = Weight 1
         if (data.moscow.could) {
           data.moscow.could.forEach((item: any) => {
             weightedList.push({ id: item.id, text: item.content, weight: 1, category: 'Could' });
           });
         }
-        // (Won't Have targets have weight 0, meaning they are excluded from the Matrix columns)
 
         setCriteria(weightedList);
       }
@@ -103,7 +99,6 @@ export default function Brainstorming() {
   const handleProceed = async () => {
     let baseData: any = {};
     
-    // 1. Load existing data (so we don't wipe out Page 1 & Page 2 info)
     if (window.electronAPI && window.electronAPI.loadData) {
       baseData = await window.electronAPI.loadData() || {};
     } else {
@@ -111,21 +106,18 @@ export default function Brainstorming() {
       if (raw) baseData = JSON.parse(raw);
     }
   
-    // 2. Merge the current Brainstorming states
     const payload = {
       ...baseData,
       subsystems: subsystems,
       alternatives: alternatives
     };
   
-    // 3. Save the payload back to the local JSON file (or localStorage fallback)
     if (window.electronAPI && window.electronAPI.saveData) {
       await window.electronAPI.saveData(payload);
     } else {
       localStorage.setItem('workspace-data', JSON.stringify(payload));
     }
   
-    // 4. Move on to the architecture view
     navigate('/architecture');
   };
 
@@ -182,11 +174,11 @@ export default function Brainstorming() {
       <ProcessTimeline currentStep="decision-matrix" />
       <header className="max-w-[1500px] mx-auto mb-8 border-b border-slate-800 pb-6 flex justify-between items-end">
         <div>
-          <span className="bg-emerald-500/20 text-emerald-400 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider mb-2 inline-block">
-            PLTW Portfolio Component
+          <span className="bg-indigo-500/20 text-indigo-400 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider mb-2 inline-block">
+            FRC Portfolio Component
           </span>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight uppercase">Evaluation Matrix (Brainstorming)</h1>
-          <p className="text-sm text-slate-400 mt-2 font-medium">Phase 3: Rate Design Alternatives Against Prioritized Criteria</p>
+          <h1 className="text-3xl font-extrabold text-white tracking-tight uppercase">Decision Matrix (Brainstorming)</h1>
+          <p className="text-sm text-slate-400 mt-2 font-medium">Phase 3: Score FRC Design Concepts Against Prioritized Criteria</p>
         </div>
         <button 
           onClick={() => navigate('/moscow')} 
@@ -198,7 +190,7 @@ export default function Brainstorming() {
 
       <div className="max-w-[1500px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10 pb-20">
         
-        {/* Left Side: Decision Matrix */}
+        {/* Decision Matrix */}
         <div className="lg:col-span-8 space-y-8">
           <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-6 shadow-lg space-y-6">
             <div>
@@ -206,24 +198,24 @@ export default function Brainstorming() {
                 Engineering Decision Matrix
               </h2>
               <p className="text-xs text-slate-400 mt-2">
-                Rate each alternative alternative from 1 to 5. The total automatically updates: 
+                Rate each alternative from 1 to 5. The total automatically updates based on: 
                 <strong className="text-indigo-400 ml-1 font-mono">Sum of (Score × MoSCoW Weight)</strong>.
               </p>
             </div>
 
             <form onSubmit={handleAddAlternative} className="bg-slate-950 p-4 rounded-lg border border-slate-800/80 flex gap-3 items-end">
               <div className="flex-1">
-                <label className="text-[10px] text-slate-500 uppercase font-bold block mb-1">Candidate Alternative</label>
+                <label className="text-[10px] text-slate-500 uppercase font-bold block mb-1">Candidate FRC Architecture</label>
                 <input 
                   type="text" 
-                  placeholder="e.g. Double-Roller Intake System" 
+                  placeholder="e.g. Swerve Drive w/ Telescopic Coral Elevator" 
                   value={newAltName}
                   onChange={(e) => setNewAltName(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
               <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-4 rounded text-xs transition h-[34px] flex items-center gap-1">
-                <Plus className="w-4 h-4" /> Add Alternative
+                <Plus className="w-4 h-4" /> Add Design Concept
               </button>
             </form>
 
@@ -231,7 +223,7 @@ export default function Brainstorming() {
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-950 text-slate-400 border-b border-slate-850">
-                    <th className="p-3 font-semibold w-1/3">Alternative Name</th>
+                    <th className="p-3 font-semibold w-1/3">Design Concept</th>
                     {criteria.map((c) => (
                       <th key={c.id} className="p-3 font-semibold text-center border-l border-slate-850 min-w-[120px]">
                         <span className="block text-[9px] text-indigo-400 font-mono uppercase font-bold">
@@ -240,14 +232,14 @@ export default function Brainstorming() {
                         <span className="block text-[10px] text-slate-300 font-normal line-clamp-1" title={c.text}>{c.text}</span>
                       </th>
                     ))}
-                    <th className="p-3 font-bold text-center border-l border-slate-850 bg-indigo-950/20 text-indigo-400 w-24">Weighted Total</th>
+                    <th className="p-3 font-bold text-center border-l border-slate-850 bg-indigo-950/20 text-indigo-400 w-24">Weighted Score</th>
                     <th className="p-3 text-center w-10"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-850">
                   {alternatives.length === 0 ? (
                     <tr>
-                      <td colSpan={criteria.length + 3} className="p-6 text-center text-slate-500 italic">No alternative designs added yet.</td>
+                      <td colSpan={criteria.length + 3} className="p-6 text-center text-slate-500 italic">No FRC candidate concepts added yet.</td>
                     </tr>
                   ) : (
                     alternatives.map((alt) => {
@@ -293,15 +285,15 @@ export default function Brainstorming() {
           </div>
         </div>
 
-        {/* Right Side: Custom Subsystems */}
+        {/* Custom Subsystem Budget Allocation */}
         <div className="lg:col-span-4 space-y-8">
           <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-6 shadow-lg space-y-5">
             <div>
               <h2 className="text-xs font-bold text-indigo-400 uppercase tracking-widest border-b border-slate-800/60 pb-2">
-                Subsystem Budgets
+                FRC Subsystem Budget Breakdown
               </h2>
               <p className="text-[10px] text-slate-400 mt-1">
-                Allocate parts margins to different physical modules of your design.
+                Allocate parts margins to distinct physical robot modules.
               </p>
             </div>
 
@@ -309,7 +301,7 @@ export default function Brainstorming() {
               <div>
                 <label className="text-[9px] text-slate-500 uppercase font-bold block mb-1">Subsystem Name</label>
                 <input 
-                  type="text" placeholder="e.g. Elevator Assembly" value={newSubName}
+                  type="text" placeholder="e.g. Swerve Drivetrain Module" value={newSubName}
                   onChange={(e) => setNewSubName(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-xs text-white focus:outline-none"
                 />
@@ -318,7 +310,7 @@ export default function Brainstorming() {
                 <label className="text-[9px] text-slate-500 uppercase font-bold block mb-1">Estimated Cost ($)</label>
                 <div className="flex gap-2">
                   <input 
-                    type="text" placeholder="0" value={newSubBudget}
+                    type="text" placeholder="1200" value={newSubBudget}
                     onChange={(e) => setNewSubBudget(e.target.value)}
                     className="flex-1 bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-xs text-white font-mono focus:outline-none"
                   />
@@ -331,7 +323,7 @@ export default function Brainstorming() {
 
             <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
               {subsystems.length === 0 ? (
-                <p className="text-xs text-slate-500 italic text-center py-4">No custom subsystems built yet.</p>
+                <p className="text-xs text-slate-500 italic text-center py-4">No custom subsystems allocated yet.</p>
               ) : (
                 subsystems.map(s => (
                   <div key={s.id} className="flex justify-between items-center bg-slate-950 p-3 rounded border border-slate-850 text-xs">
@@ -345,7 +337,6 @@ export default function Brainstorming() {
               )}
             </div>
 
-            {/* Calculations Summary Card */}
             <div className="border-t border-slate-800 pt-4 space-y-2 text-xs">
               <div className="flex justify-between text-slate-400">
                 <span>Budget Cap (from Brief):</span>
@@ -364,12 +355,11 @@ export default function Brainstorming() {
             </div>
           </div>
 
-          {/* Proceed Action Trigger */}
           <button 
             type="button" onClick={handleProceed}
             className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-6 rounded-lg transition shadow-lg text-sm tracking-wider text-center"
           >
-            Save &amp; Continue to Architectural Design Canvas →
+            Save &amp; Continue to FRC System Canvas →
           </button>
         </div>
 

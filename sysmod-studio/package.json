@@ -1,10 +1,10 @@
 {
   "name": "sysmod-studio",
   "version": "1.0.0",
-  "description": "An Electron application with React and TypeScript",
+  "description": "SysMod Studio connects high school FIRST Robotics strategy with aerospace-grade engineering rigor. Through a four-phase visual workflow, FRC students define physical bounds, execute trade studies, build graphical node-and-edge electrical/control architectures, run real-time rule checks, SysMod Studio White Paper ASSIST Laboratory and export production code (WPILib Java, Python) alongside formal Architecture Analysis & Design Language (AADL) models used in aviation safety analysis.",
   "main": "./out/main/index.js",
-  "author": "example.com",
-  "homepage": "https://electron-vite.org",
+  "author": "Florida Institute of Technology ASSIST Laboratory",
+  "homepage": "https://research.fit.edu/assist-lab/",
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",
