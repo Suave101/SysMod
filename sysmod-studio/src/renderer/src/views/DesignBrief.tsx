@@ -1,20 +1,20 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom'; // Or your chosen Electron router hook
+import { useNavigate } from 'react-router-dom';
 
 export default function DesignBrief() {
   const navigate = useNavigate();
 
-  // Season Context
-  const [seasonKey, setSeasonKey] = useState('biobuzz');
+  // FRC Season Context
+  const [seasonKey, setSeasonKey] = useState('reefscape');
 
-  // Document Metadata (Client & Target Consumer pre-populated)
+  // Metadata
   const [designers, setDesigners] = useState('');
   const [teamNumber, setTeamNumber] = useState('');
   const [teamName, setTeamName] = useState('');
-  const [client, setClient] = useState('FTC Event Officials & Judges');
-  const [targetConsumer, setTargetConsumer] = useState('Competition Alliance Partners');
+  const [client, setClient] = useState('FRC Event Officials & Technical Judges');
+  const [targetConsumer, setTargetConsumer] = useState('Alliance Partners & Drive Team');
 
-  // Auto-Growing Text Fields
+  // Statements
   const [problemStatement, setProblemStatement] = useState('');
   const [designStatement, setDesignStatement] = useState('');
   const problemRef = useRef<HTMLTextAreaElement>(null);
@@ -34,22 +34,21 @@ export default function DesignBrief() {
     }
   }, [designStatement]);
 
-  // Design Criteria Registy (Unprioritized)
+  // Criteria Registry
   const [criteria, setCriteria] = useState<{ id: string; text: string; category: string }[]>([]);
   const [newCriterionText, setNewCriterionText] = useState('');
   const [newCriterionCat, setNewCriterionCat] = useState('Intake');
 
-  // Sizing & Actuator Constraints (Pre-populated defaults)
-  const [bounds, setBounds] = useState({ length: 17.5, width: 17.5, height: 17.5 });
-  const [targetWeight, setTargetWeight] = useState(32.0);
+  // FRC Sizing & Rules Constraints
+  const [bounds, setBounds] = useState({ length: 30.0, width: 30.0, height: 48.0 });
+  const [targetWeight, setTargetWeight] = useState(115.0); // FRC max limit is 125 lbs (excluding battery & bumpers)
   const [plannedMotors, setPlannedMotors] = useState('');
-  const [plannedServos, setPlannedServos] = useState('');
-  const [hasMainPowerSwitch, setHasMainPowerSwitch] = useState(false);
+  const [plannedPneumatics, setPlannedPneumatics] = useState('');
+  const [hasMainCircuitBreaker, setHasMainCircuitBreaker] = useState(true); // 120A Main Breaker is required by FRC rules
 
-  // Bulletproof Spending Limit (Raw string state to prevent React cursor/backspace locks)
-  const [spendingLimit, setSpendingLimit] = useState('1000');
+  // Project Spending Limit ($)
+  const [spendingLimit, setSpendingLimit] = useState('4000');
 
-  // Load existing data on mount if it exists
   useEffect(() => {
     if (window.electronAPI && window.electronAPI.loadData) {
       window.electronAPI.loadData().then((savedData: any) => {
@@ -66,8 +65,8 @@ export default function DesignBrief() {
           if (savedData.bounds) setBounds(savedData.bounds);
           if (savedData.targetWeight) setTargetWeight(savedData.targetWeight);
           if (savedData.plannedMotors) setPlannedMotors(savedData.plannedMotors);
-          if (savedData.plannedServos) setPlannedServos(savedData.plannedServos);
-          if (savedData.hasMainPowerSwitch !== undefined) setHasMainPowerSwitch(savedData.hasMainPowerSwitch);
+          if (savedData.plannedPneumatics) setPlannedPneumatics(savedData.plannedPneumatics);
+          if (savedData.hasMainCircuitBreaker !== undefined) setHasMainCircuitBreaker(savedData.hasMainCircuitBreaker);
           if (savedData.spendingLimit) setSpendingLimit(savedData.spendingLimit);
         }
       });
@@ -88,7 +87,6 @@ export default function DesignBrief() {
     setCriteria(criteria.filter(c => c.id !== id));
   };
 
-  // Save current workspace state to JSON and route to next file page
   const handleProceed = async () => {
     const payload = {
       seasonKey,
@@ -103,19 +101,17 @@ export default function DesignBrief() {
       bounds,
       targetWeight,
       plannedMotors,
-      plannedServos,
-      hasMainPowerSwitch,
+      plannedPneumatics,
+      hasMainCircuitBreaker,
       spendingLimit
     };
 
     if (window.electronAPI && window.electronAPI.saveData) {
       await window.electronAPI.saveData(payload);
     } else {
-      // LocalStorage fallback for web testing
       localStorage.setItem('workspace-data', JSON.stringify(payload));
     }
     
-    // Router navigation to Page 2 (handled by your electron router)
     navigate('/moscow'); 
   };
 
@@ -126,7 +122,7 @@ export default function DesignBrief() {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-indigo-600 text-white">
-                Engineering Portfolio Component
+                FRC Engineering Portfolio
               </span>
               <span className="text-slate-400 text-xs font-mono">Page 1: Project Scope &amp; Parameters</span>
             </div>
@@ -134,15 +130,16 @@ export default function DesignBrief() {
           </div>
 
           <div className="bg-slate-900 border border-slate-800 p-3 rounded-lg flex items-center gap-3">
-            <span className="text-xs text-slate-400 font-semibold font-mono">FTC Season:</span>
+            <span className="text-xs text-slate-400 font-semibold font-mono">FRC Season:</span>
             <select 
               value={seasonKey} 
               onChange={(e) => setSeasonKey(e.target.value)}
               className="bg-slate-950 border border-slate-800 text-xs text-indigo-400 font-bold rounded p-1.5 focus:outline-none"
             >
-              <option value="biobuzz">BIOBUZZ™ (2026-2027)</option>
-              <option value="decode">DECODE™ (2025-2026)</option>
-              <option value="intothedeep">INTO THE DEEP™ (2024-2025)</option>
+              <option value="reefscape">REEFSCAPE™ (2025)</option>
+              <option value="crescendo">CRESCENDO™ (2024)</option>
+              <option value="chargedup">CHARGED UP™ (2023)</option>
+              <option value="rapidreact">RAPID REACT™ (2022)</option>
             </select>
           </div>
         </div>
@@ -162,20 +159,20 @@ export default function DesignBrief() {
                 <label className="text-slate-500 block mb-1.5 uppercase font-bold text-[10px]">Student Designer(s)</label>
                 <input 
                   type="text" value={designers} onChange={(e) => setDesigners(e.target.value)}
-                  placeholder="e.g. Jane Doe, John Smith"
+                  placeholder="e.g. Lead Mechanical &amp; Software Engineers"
                   className="w-full bg-slate-950 border border-slate-800 rounded p-3 text-white text-sm focus:outline-none focus:border-indigo-500" 
                 />
               </div>
               <div>
-                <label className="text-slate-500 block mb-1.5 uppercase font-bold text-[10px]">Team Name &amp; Number</label>
+                <label className="text-slate-500 block mb-1.5 uppercase font-bold text-[10px]">Team Name &amp; FRC Number</label>
                 <div className="flex gap-2">
                   <input 
                     type="text" value={teamNumber} onChange={(e) => setTeamNumber(e.target.value)}
-                    className="w-1/3 bg-slate-950 border border-slate-800 rounded p-3 text-center text-white text-sm focus:outline-none" placeholder="99999"
+                    className="w-1/3 bg-slate-950 border border-slate-800 rounded p-3 text-center text-white text-sm focus:outline-none" placeholder="254"
                   />
                   <input 
                     type="text" value={teamName} onChange={(e) => setTeamName(e.target.value)}
-                    className="w-2/3 bg-slate-950 border border-slate-800 rounded p-3 text-white text-sm focus:outline-none" placeholder="Robot Call Sign"
+                    className="w-2/3 bg-slate-950 border border-slate-800 rounded p-3 text-white text-sm focus:outline-none" placeholder="The Cheesy Poofs"
                   />
                 </div>
               </div>
@@ -190,17 +187,17 @@ export default function DesignBrief() {
             </div>
           </div>
 
-          {/* Problem & Design Statements (Auto-Growing) */}
+          {/* Problem & Design Statements */}
           <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6 shadow-lg space-y-6">
             <div>
               <div className="flex justify-between items-center mb-1">
                 <h2 className="text-sm font-bold text-indigo-400 uppercase tracking-widest">2. Problem Statement</h2>
                 <span className="text-[10px] text-slate-500 font-mono">Do not describe solutions</span>
               </div>
-              <p className="text-xs text-slate-400 mb-3">Who has the problem? What is the problem? Why is it important to solve?</p>
+              <p className="text-xs text-slate-400 mb-3">Identify the game challenge, scoring bottlenecks, or alliance strategy problems to address.</p>
               <textarea 
                 ref={problemRef} value={problemStatement} onChange={(e) => setProblemStatement(e.target.value)}
-                placeholder="Draft your formal problem statement here..."
+                placeholder="Draft your formal FRC problem statement here..."
                 rows={3}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3.5 text-sm text-white focus:outline-none focus:border-indigo-500 leading-relaxed font-mono resize-none overflow-hidden"
               />
@@ -209,12 +206,12 @@ export default function DesignBrief() {
             <div className="border-t border-slate-850 pt-6">
               <div className="flex justify-between items-center mb-1">
                 <h2 className="text-sm font-bold text-indigo-400 uppercase tracking-widest">3. Design Statement</h2>
-                <span className="text-[10px] text-slate-500 font-mono">Outline actions &amp; constraints</span>
+                <span className="text-[10px] text-slate-500 font-mono">Outline mechanisms &amp; FRC constraints</span>
               </div>
-              <p className="text-xs text-slate-400 mb-3">Explain what your team plans to design, build, test, and deliver to satisfy the problem statement.</p>
+              <p className="text-xs text-slate-400 mb-3">Explain what your team plans to design, build, test, and program to succeed in competition matches.</p>
               <textarea 
                 ref={designRef} value={designStatement} onChange={(e) => setDesignStatement(e.target.value)}
-                placeholder="Design, build, test, and program a robot to..."
+                placeholder="Design, build, test, and program an FRC robot to..."
                 rows={3}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3.5 text-sm text-white focus:outline-none focus:border-indigo-500 leading-relaxed font-mono resize-none overflow-hidden"
               />
@@ -228,7 +225,7 @@ export default function DesignBrief() {
                 4. Performance Criteria
               </h2>
               <p className="text-xs text-slate-400 mt-2 mb-4">
-                List the measurable criteria you will use to evaluate your design variants on the next page.
+                List the measurable criteria you will use to evaluate candidate designs in your decision matrix.
               </p>
             </div>
 
@@ -236,7 +233,7 @@ export default function DesignBrief() {
               <div className="md:col-span-2">
                 <label className="text-[10px] text-slate-500 uppercase font-bold block mb-1.5">Criterion Description</label>
                 <input 
-                  type="text" placeholder="e.g. Elevates cargo mechanism in under 2 seconds" value={newCriterionText}
+                  type="text" placeholder="e.g. Scores Coral/Note element in under 1.5 seconds" value={newCriterionText}
                   onChange={(e) => setNewCriterionText(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-2 text-xs text-white focus:outline-none"
                 />
@@ -245,10 +242,11 @@ export default function DesignBrief() {
                 <label className="text-[10px] text-slate-500 uppercase font-bold block mb-1.5">Category</label>
                 <select value={newCriterionCat} onChange={(e) => setNewCriterionCat(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-2 text-xs text-white focus:outline-none">
                   <option value="Intake">Intake</option>
-                  <option value="Scoring">Scoring</option>
+                  <option value="Scoring">Scoring/Mechanism</option>
                   <option value="Autonomous">Autonomous</option>
-                  <option value="Endgame">Endgame</option>
-                  <option value="Drivetrain">Drivetrain</option>
+                  <option value="Drivetrain">Drivetrain (Swerve)</option>
+                  <option value="Climber">Climber/Endgame</option>
+                  <option value="Vision">Vision/Targeting</option>
                 </select>
               </div>
               <div>
@@ -282,26 +280,26 @@ export default function DesignBrief() {
         {/* Right Side Controls */}
         <div className="lg:col-span-4 space-y-8">
           
-          {/* FTC Dimensions */}
+          {/* FRC Dimensions & Constraints */}
           <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6 shadow-lg">
             <h2 className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-3 border-b border-slate-800 pb-2">
-              FTC Core Dimensions
+              FRC Envelope Rules (R101/R103)
             </h2>
             <div className="space-y-4">
               <div>
-                <span className="text-xs font-semibold text-slate-300 block mb-2">Starting Envelope Limits (Inches)</span>
+                <span className="text-xs font-semibold text-slate-300 block mb-2">Starting Perimeter Limits (Inches)</span>
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="text-[9px] text-slate-500 block mb-1">Length (X)</label>
-                    <input type="number" step="0.1" value={bounds.length} onChange={(e) => setBounds({...bounds, length: parseFloat(e.target.value) || 0})} className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-center text-white text-xs font-mono" />
+                    <input type="number" step="0.5" value={bounds.length} onChange={(e) => setBounds({...bounds, length: parseFloat(e.target.value) || 0})} className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-center text-white text-xs font-mono" />
                   </div>
                   <div>
                     <label className="text-[9px] text-slate-500 block mb-1">Width (Y)</label>
-                    <input type="number" step="0.1" value={bounds.width} onChange={(e) => setBounds({...bounds, width: parseFloat(e.target.value) || 0})} className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-center text-white text-xs font-mono" />
+                    <input type="number" step="0.5" value={bounds.width} onChange={(e) => setBounds({...bounds, width: parseFloat(e.target.value) || 0})} className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-center text-white text-xs font-mono" />
                   </div>
                   <div>
                     <label className="text-[9px] text-slate-500 block mb-1">Height (Z)</label>
-                    <input type="number" step="0.1" value={bounds.height} onChange={(e) => setBounds({...bounds, height: parseFloat(e.target.value) || 0})} className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-center text-white text-xs font-mono" />
+                    <input type="number" step="0.5" value={bounds.height} onChange={(e) => setBounds({...bounds, height: parseFloat(e.target.value) || 0})} className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-center text-white text-xs font-mono" />
                   </div>
                 </div>
               </div>
@@ -309,7 +307,7 @@ export default function DesignBrief() {
               <div className="border-t border-slate-850 pt-4 flex justify-between items-center">
                 <div>
                   <span className="text-xs font-semibold text-slate-300 block">Target Weight Goal</span>
-                  <span className="text-[9px] text-slate-500">Under 42.0 lbs is recommended</span>
+                  <span className="text-[9px] text-slate-500">Max 125.0 lbs (excl. battery/bumpers)</span>
                 </div>
                 <div className="relative w-28">
                   <input type="number" step="0.5" value={targetWeight} onChange={(e) => setTargetWeight(parseFloat(e.target.value) || 0)} className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-right text-white text-xs font-mono pr-8" />
@@ -319,40 +317,43 @@ export default function DesignBrief() {
             </div>
           </div>
 
-          {/* Actuators */}
+          {/* Actuators & Safety Rules */}
           <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6 shadow-lg space-y-4">
-            <h2 className="text-xs font-bold text-indigo-400 uppercase tracking-widest border-b border-slate-800 pb-2">Actuators &amp; Safety</h2>
+            <h2 className="text-xs font-bold text-indigo-400 uppercase tracking-widest border-b border-slate-800 pb-2">Actuators &amp; Safety Compliance</h2>
             <div className="space-y-3 text-xs">
               <div className="flex justify-between items-center">
-                <span className="text-slate-300">Planned Motors</span>
+                <span className="text-slate-300">Planned Motors / CAN IDs</span>
                 <div className="flex items-center gap-1">
-                  <input type="text" value={plannedMotors} onChange={(e) => setPlannedMotors(e.target.value)} className="w-12 bg-slate-950 border border-slate-800 rounded p-1 text-center text-white font-mono text-xs" placeholder="0" />
-                  <span className="text-slate-500 text-[10px]">/ 8 Max</span>
+                  <input type="text" value={plannedMotors} onChange={(e) => setPlannedMotors(e.target.value)} className="w-12 bg-slate-950 border border-slate-800 rounded p-1 text-center text-white font-mono text-xs" placeholder="12" />
+                  <span className="text-slate-500 text-[10px]">/ 20 Max PDH</span>
                 </div>
               </div>
               <div className="flex justify-between items-center border-t border-slate-850 pt-3">
-                <span className="text-slate-300">Planned Servos</span>
+                <span className="text-slate-300">Planned Pneumatic Actuators</span>
                 <div className="flex items-center gap-1">
-                  <input type="text" value={plannedServos} onChange={(e) => setPlannedServos(e.target.value)} className="w-12 bg-slate-950 border border-slate-800 rounded p-1 text-center text-white font-mono text-xs" placeholder="0" />
-                  <span className="text-slate-500 text-[10px]">/ 10 Max</span>
+                  <input type="text" value={plannedPneumatics} onChange={(e) => setPlannedPneumatics(e.target.value)} className="w-12 bg-slate-950 border border-slate-800 rounded p-1 text-center text-white font-mono text-xs" placeholder="2" />
+                  <span className="text-slate-500 text-[10px]">Solenoids</span>
                 </div>
               </div>
               <div className="flex justify-between items-center border-t border-slate-850 pt-3">
-                <span className="text-slate-300">Has COTS Main Switch</span>
-                <input type="checkbox" checked={hasMainPowerSwitch} onChange={(e) => setHasMainPowerSwitch(e.target.checked)} className="rounded border-slate-800 text-indigo-600 bg-slate-950 h-5 w-5 cursor-pointer" />
+                <div>
+                  <span className="text-slate-300 block">120A Main Circuit Breaker</span>
+                  <span className="text-[9px] text-slate-500">Required by R601</span>
+                </div>
+                <input type="checkbox" checked={hasMainCircuitBreaker} onChange={(e) => setHasMainCircuitBreaker(e.target.checked)} className="rounded border-slate-800 text-indigo-600 bg-slate-950 h-5 w-5 cursor-pointer" />
               </div>
             </div>
           </div>
 
-          {/* Master Budget Cap Field - Bulletproof Input */}
+          {/* Spending Limit Ceiling */}
           <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6 shadow-lg space-y-3">
-            <h2 className="text-xs font-bold text-indigo-400 uppercase tracking-widest border-b border-slate-800 pb-1">Project Spending Limit</h2>
-            <p className="text-[10px] text-slate-500">Set the overall ceiling for your custom subsystems.</p>
+            <h2 className="text-xs font-bold text-indigo-400 uppercase tracking-widest border-b border-slate-800 pb-1">Project Budget Ceiling</h2>
+            <p className="text-[10px] text-slate-500">Establish the hardware cost limit for your overall design envelope.</p>
             <div className="flex items-center gap-2 bg-slate-950 p-2.5 rounded border border-slate-800">
               <span className="text-slate-500 font-bold text-sm">$</span>
               <input 
                 type="text" value={spendingLimit} onChange={(e) => setSpendingLimit(e.target.value)}
-                placeholder="e.g. 1000"
+                placeholder="4000"
                 className="w-full bg-transparent border-none text-white font-mono font-bold text-sm focus:ring-0 p-0" 
               />
             </div>
@@ -363,7 +364,7 @@ export default function DesignBrief() {
             type="button" onClick={handleProceed}
             className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-6 rounded-lg transition shadow-lg text-sm tracking-wider text-center"
           >
-            Save &amp; Continue to MoSCoW Table →
+            Save &amp; Continue to MoSCoW Prioritization →
           </button>
 
         </div>

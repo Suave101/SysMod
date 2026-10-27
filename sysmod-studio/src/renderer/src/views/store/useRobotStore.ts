@@ -1,268 +1,481 @@
+// useRobotStore.ts
 import { create } from 'zustand';
-import { Connection, Edge, Node, addEdge, OnNodesChange, OnEdgesChange, applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
+import { 
+  Node, 
+  Edge, 
+  OnNodesChange, 
+  OnEdgesChange, 
+  OnConnect, 
+  applyNodeChanges, 
+  applyEdgeChanges, 
+  addEdge 
+} from '@xyflow/react';
 
-export type HardwareType = 'ControlHub' | string; // Allows for dynamic strings now
+export type PortType = 'pwr12v' | 'pwr10a' | 'pwrRegulated' | 'can' | 'canfd' | 'eth' | 'pneumatic' | 'pwm' | 'dio' | 'rsl' | 'usb';
 
-export interface RobotNodeData {
+export const MAX_HIGH_CHANNELS = 20; // Ports 0-19 (40A ATO)
+export const MAX_LOW_CHANNELS = 3;   // Ports 20-22 (15A ATM)
+export const MAX_SWITCHED_CHANNELS = 1; // Port 23 (15A ATM Switchable)
+
+export interface FRCNodeData extends Record<string, unknown> {
   label: string;
-  hardwareType: HardwareType;
-  [key: string]: any; // Allow our dynamic ports and themes
+  deviceType: string;
+  category: 'Control & Power' | 'Actuators & Drive' | 'Sensors & Vision' | 'Coprocessors';
+  canId?: number;
+  dioPort?: number;
+  pwmPort?: number;
+  powerChannel?: string;
+  protocol?: string;
+  details?: string;
 }
 
-export type RobotNode = Node<RobotNodeData>;
-
-// --- THE HARDWARE REGISTRY ---
-// Add new components here in seconds. The StandardNode will automatically render them!
-const HARDWARE_LIBRARY: Record<string, any> = {
-  // ==========================================
-  // MOTORS & ACTUATORS
-  // ==========================================
-  DcMotor: {
-    theme: 'amber', iconName: 'Zap',
-    inputs: [{ id: 'power_in', label: '12V Power & Encoder', color: '!bg-amber-500' }],
-    outputs: [],
-    details: { "Type": "DC Motor (w/ Integrated Encoder)", "Compatibility": "Direct" }
-  },
-  Servo: {
-    theme: 'rose', iconName: 'Settings',
-    inputs: [{ id: 'pwm_in', label: 'PWM Signal (5V)', color: '!bg-orange-400' }],
-    outputs: [],
-    details: { "Type": "Standard Servo" }
-  },
-
-  // ==========================================
-  // I2C SENSORS (Outputs to Control Hub Target)
-  // ==========================================
-  RevColorSensor: {
-    theme: 'cyan', iconName: 'Eye',
-    inputs: [],
-    outputs: [{ id: 'i2c_out', label: 'I2C Data Bus', color: '!bg-cyan-400' }],
-    details: { "Manufacturer": "REV Robotics", "Version": "V2/V3", "Wiring": "Direct" }
-  },
-  RevDistanceSensor: {
-    theme: 'cyan', iconName: 'Ruler',
-    inputs: [],
-    outputs: [{ id: 'i2c_out', label: 'I2C Data Bus', color: '!bg-cyan-400' }],
-    details: { "Manufacturer": "REV Robotics", "Range": "2m", "Wiring": "Direct" }
-  },
-  Rev9AxisImu: {
-    theme: 'cyan', iconName: 'Compass',
-    inputs: [],
-    outputs: [{ id: 'i2c_out', label: 'I2C Data Bus', color: '!bg-cyan-400' }],
-    details: { "Manufacturer": "REV Robotics", "Type": "9-Axis IMU", "Wiring": "Direct" }
-  },
-  NavX2Micro: {
-    theme: 'cyan', iconName: 'Navigation',
-    inputs: [],
-    outputs: [{ id: 'i2c_out', label: 'I2C Data Bus', color: '!bg-cyan-400' }],
-    details: { "Manufacturer": "Kauai Labs", "Type": "IMU/AHRS", "Wiring": "Direct" }
-  },
-  PinpointOdometry: {
-    theme: 'cyan', iconName: 'Map',
-    inputs: [],
-    outputs: [{ id: 'i2c_out', label: 'I2C Data Bus', color: '!bg-cyan-400' }],
-    details: { "Manufacturer": "goBILDA", "Type": "Odometry Computer", "Wiring": "Direct" }
-  },
-  OctoQuad: {
-    theme: 'cyan', iconName: 'Cpu',
-    inputs: [],
-    outputs: [{ id: 'i2c_out', label: 'I2C Data Bus', color: '!bg-cyan-400' }],
-    details: { "Manufacturer": "DigitalChickenLabs", "Type": "Encoder Hub", "Wiring": "Direct" }
-  },
-  StandardI2CSensor: {
-    theme: 'cyan', iconName: 'Radio',
-    inputs: [],
-    outputs: [{ id: 'i2c_out', label: 'I2C Data Bus', color: '!bg-cyan-400' }],
-    details: { "Manufacturer": "AndyMark", "Type": "Color/Lidar/IMU", "Wiring": "Direct" }
-  },
-  HuskyLens: {
-    theme: 'cyan', iconName: 'Camera',
-    inputs: [],
-    outputs: [{ id: 'i2c_out', label: 'I2C Data Bus', color: '!bg-cyan-400' }],
-    details: { "Manufacturer": "DFRobot", "Wiring": "Custom Adapter Cable Req." }
-  },
-  OpticalOdometrySparkFun: {
-    theme: 'cyan', iconName: 'Mouse',
-    inputs: [],
-    outputs: [{ id: 'i2c_out', label: 'I2C Data Bus', color: '!bg-cyan-400' }],
-    details: { "Manufacturer": "SparkFun", "Wiring": "Adapter Cable Req." }
-  },
-  AdafruitI2C: {
-    theme: 'cyan', iconName: 'Microchip',
-    inputs: [],
-    outputs: [{ id: 'i2c_out', label: 'I2C Data Bus', color: '!bg-cyan-400' }],
-    details: { "Manufacturer": "Adafruit", "Type": "BNO055 / TCS34725", "Wiring": "Custom Harness Req." }
-  },
-  ModernRoboticsI2C: {
-    theme: 'cyan', iconName: 'History',
-    inputs: [],
-    outputs: [{ id: 'i2c_out', label: 'I2C Data Bus', color: '!bg-cyan-400' }],
-    details: { "Manufacturer": "Modern Robotics", "Type": "Compass/Gyro/IR (Legacy)", "Wiring": "Logic Level Converter Req." }
-  },
-
-  // ==========================================
-  // DIGITAL SENSORS
-  // ==========================================
-  TouchSensor: {
-    theme: 'purple', iconName: 'Hand',
-    inputs: [],
-    outputs: [{ id: 'digital_out', label: 'Digital Signal', color: '!bg-purple-400' }],
-    details: { "Manufacturer": "REV Robotics", "Type": "Button/Limit Switch", "Wiring": "Direct" }
-  },
-  MagneticLimitSwitch: {
-    theme: 'purple', iconName: 'Magnet',
-    inputs: [],
-    outputs: [{ id: 'digital_out', label: 'Digital Signal', color: '!bg-purple-400' }],
-    details: { "Manufacturer": "REV Robotics", "Type": "Magnetic Field Sensor", "Wiring": "Direct" }
-  },
-  LegacyLimitSwitch: {
-    theme: 'purple', iconName: 'ToggleLeft',
-    inputs: [],
-    outputs: [{ id: 'digital_out', label: 'Digital Signal', color: '!bg-purple-400' }],
-    details: { "Manufacturer": "Modern Robotics", "Type": "Limit Switch", "Wiring": "Custom Harness Req." }
-  },
-
-  // ==========================================
-  // ANALOG SENSORS
-  // ==========================================
-  Potentiometer: {
-    theme: 'emerald', iconName: 'RotateCw',
-    inputs: [],
-    outputs: [{ id: 'analog_out', label: 'Analog Signal', color: '!bg-emerald-400' }],
-    details: { "Manufacturer": "REV Robotics", "Type": "Rotational Position", "Wiring": "Custom Harness Req." }
-  },
-  FloodgateSwitch: {
-    theme: 'emerald', iconName: 'Power',
-    inputs: [],
-    outputs: [{ id: 'analog_out', label: 'Analog Signal', color: '!bg-emerald-400' }],
-    details: { "Manufacturer": "goBILDA", "Type": "Power Switch", "Wiring": "Direct" }
-  },
-  LegacyTouchSensor: {
-    theme: 'emerald', iconName: 'Hand',
-    inputs: [],
-    outputs: [{ id: 'analog_out', label: 'Analog Signal', color: '!bg-emerald-400' }],
-    details: { "Manufacturer": "Modern Robotics", "Type": "Touch Sensor (Legacy)", "Wiring": "Custom Harness Req." }
-  },
-
-  // ==========================================
-  // STANDALONE ENCODERS
-  // ==========================================
-  ThroughBoreEncoder: {
-    theme: 'amber', iconName: 'Disc',
-    inputs: [{ id: 'encoder_link', label: 'Encoder Port Connection', color: '!bg-amber-500' }],
-    outputs: [],
-    details: { "Manufacturer": "REV Robotics", "Type": "Quad Encoder V2", "Wiring": "Direct" }
-  },
-
-  // ==========================================
-  // VISION SENSORS & COPROCESSORS
-  // ==========================================
-  Limelight3A: {
-    theme: 'indigo', iconName: 'Target',
-    inputs: [{ id: 'usb_link', label: 'USB 3.0', color: '!bg-indigo-400' }],
-    outputs: [],
-    details: { "Manufacturer": "Limelight", "Type": "Smart Vision Sensor", "Protocol": "UVC / Network" }
-  },
-  Webcam: {
-    theme: 'indigo', iconName: 'Video',
-    inputs: [{ id: 'usb_link', label: 'USB 2.0 / 3.0', color: '!bg-indigo-400' }],
-    outputs: [],
-    details: { "Manufacturer": "Standard (Logitech/Microsoft)", "Type": "UVC Camera", "Usage": "TensorFlow / AprilTags" }
-  },
-  Coprocessor: {
-    theme: 'indigo', iconName: 'Cpu',
-    inputs: [{ id: 'usb_serial', label: 'USB Serial Link', color: '!bg-indigo-400' }],
-    outputs: [{ id: 'data_out', label: 'Data / GPIO Bus', color: '!bg-indigo-300' }],
-    details: { "OS": "Linux (ARM)", "Protocol": "USB Serial" }
-  }
-};
-
-// --- CONNECTION RULES ---
-// Define rules for hardware connections here. Key format: "hardwareType:targetHandleId"
-interface ConnectionRule {
-  maxConnections?: number; 
-  allowedSourcePrefixes?: string[];
+export interface FRCEdgeData extends Record<string, unknown> {
+  channelType?: 'high' | 'low' | 'switched';
+  channelNum?: number;
+  isCanTerminator?: boolean;
 }
 
-const CONNECTION_RULES: Record<string, ConnectionRule> = {
-  'DcMotor:power_in': {
-    maxConnections: 1,
-    allowedSourcePrefixes: ['motor_'],
-  },
-};
-
-
-interface RobotStoreState {
-  nodes: RobotNode[];
+interface RobotStore {
+  nodes: Node<FRCNodeData>[];
   edges: Edge[];
-  onNodesChange: OnNodesChange<RobotNode>;
+  onNodesChange: OnNodesChange;
   onEdgesChange: OnEdgesChange;
-  onConnect: (connection: Connection) => void;
-  addDevice: (type: HardwareType) => void;
-  updateNodeLabel: (id: string, label: string) => void;
-  deleteNode: (id: string) => void;
+  onConnect: OnConnect;
+  addDevice: (type: string) => void;
+  removeNode: (id: string) => void;
+  removeEdge: (edgeId: string) => void;
   clearWorkspace: () => void;
+  setNodes: (nodes: Node<FRCNodeData>[]) => void;
+  setEdges: (edges: Edge[]) => void;
+  getPdhAllocations: () => {
+    highMap: Map<number, { nodeId: string; deviceLabel: string }>;
+    lowMap: Map<number, { nodeId: string; deviceLabel: string }>;
+    switchedMap: Map<number, { nodeId: string; deviceLabel: string }>;
+  };
 }
 
-export const useRobotStore = create<RobotStoreState>((set, get) => ({
+export const WIRE_STYLES: Record<string, { color: string; label: string; animated: boolean; strokeWidth: number; strokeDasharray?: string }> = {
+  pwrBattery: { color: '#dc2626', label: '12V Main Unfiltered', animated: false, strokeWidth: 4 },
+  pwrHigh: { color: '#ef4444', label: '40A High-Current (ATO)', animated: false, strokeWidth: 3 },
+  pwrLow: { color: '#f97316', label: '15A Low-Current (ATM)', animated: false, strokeWidth: 2.5 },
+  pwrSwitched: { color: '#e11d48', label: '15A Switchable', animated: false, strokeWidth: 2.5, strokeDasharray: '4 2' },
+  pwrRegulated: { color: '#38bdf8', label: 'Regulated 5V/12V Power', animated: false, strokeWidth: 2 },
+  can: { color: '#eab308', label: 'Standard CAN Bus (1Mbps)', animated: true, strokeWidth: 2.5 },
+  canfd: { color: '#f59e0b', label: 'CTRE CAN FD Bus (8Mbps)', animated: true, strokeWidth: 3 },
+  eth: { color: '#10b981', label: 'Ethernet Network', animated: true, strokeWidth: 2.5 },
+  pneumatic: { color: '#0284c7', label: 'Pneumatics Air', animated: false, strokeWidth: 2.5, strokeDasharray: '6 3' },
+  pwm: { color: '#a855f7', label: 'PWM Signal', animated: false, strokeWidth: 2 },
+  dio: { color: '#c084fc', label: 'DIO / Sensor Signal', animated: false, strokeWidth: 2 },
+  rsl: { color: '#facc15', label: 'RSL Indicator Wiring', animated: true, strokeWidth: 2 },
+  usb: { color: '#6366f1', label: 'USB Data Link', animated: false, strokeWidth: 2 },
+};
+
+const FRC_DEVICE_DEFAULTS: Record<string, { label: string; category: FRCNodeData['category']; protocol: string; details: string }> = {
+  Battery12V: { label: '12V FRC Battery', category: 'Control & Power', protocol: '12V DC (SB50)', details: '12V 18Ah SLA Battery' },
+  MainBreaker120A: { label: '120A Main Breaker', category: 'Control & Power', protocol: 'High Current Pass', details: 'Primary System Power Switch' },
+  PDH: { label: 'REV PDH', category: 'Control & Power', protocol: '12V Power / CAN', details: '20 High / 3 Low / 1 Switched' },
+  roboRIO: { label: 'roboRIO 2.0', category: 'Control & Power', protocol: 'CAN / Eth / USB / DIO', details: 'Main Robot Controller' },
+  RSL: { label: 'Robot Signal Light (RSL)', category: 'Control & Power', protocol: 'RSL Signal', details: 'Allen-Bradley Status Light' },
+  RadioSwitch: { label: 'VH-109 FRC Radio', category: 'Control & Power', protocol: 'Ethernet / Passive PoE', details: '2-Port Managed FRC Radio' },
+  PneumaticsHub: { label: 'Pneumatics Hub', category: 'Control & Power', protocol: 'CAN / Pneumatic', details: 'PCM/PH Controller' },
+  PressureSwitch: { label: 'Pneumatic Pressure Switch', category: 'Control & Power', protocol: 'Cutoff Switch Signal', details: '120 PSI Auto Cutoff Switch' },
+  VRM_MPM: { label: 'Mini Power Module / VRM', category: 'Control & Power', protocol: 'Aux Power', details: 'Regulated Aux Power Board' },
+  BuckConverter: { label: '5V/12V Buck Converter', category: 'Control & Power', protocol: 'DC-DC Regulated', details: 'Clean Power for Coprocessors' },
+  CANivore: { label: 'CTRE CANivore', category: 'Control & Power', protocol: 'USB to CAN FD', details: 'Secondary CAN FD Bus Adapter' },
+  CANHub: { label: 'WCP CAN Bus Hub', category: 'Control & Power', protocol: 'CAN Splitter', details: 'CAN Bus Distribution Board' },
+  BrushedController: { label: 'Talon SRX / SPARK', category: 'Actuators & Drive', protocol: 'CAN / PWM', details: 'Brushed Motor Controller' },
+  KrakenX60: { label: 'Kraken X60 Motor', category: 'Actuators & Drive', protocol: 'CAN FD / Talon FX', details: 'Brushless Actuator' },
+  Falcon500: { label: 'Falcon 500 Motor', category: 'Actuators & Drive', protocol: 'CAN / Talon FX', details: 'Integrated Brushless Motor' },
+  SparkMaxNEO: { label: 'NEO + SPARK Max', category: 'Actuators & Drive', protocol: 'CAN Bus / PWM', details: 'Brushless Controller' },
+  NEOVortex: { label: 'NEO Vortex + SPARK Flex', category: 'Actuators & Drive', protocol: 'CAN Bus / PWM', details: 'High Output Motor' },
+  NEO550: { label: 'NEO 550 Motor', category: 'Actuators & Drive', protocol: 'CAN Bus / PWM', details: 'Compact Brushless' },
+  PWMServo: { label: 'PWM Servo Motor', category: 'Actuators & Drive', protocol: 'PWM Signal', details: 'Standard Servo' },
+  Compressor: { label: 'Pneumatic Compressor', category: 'Actuators & Drive', protocol: '12V Pneumatic Power', details: 'Air Compressor' },
+  SolenoidValve: { label: 'Solenoid Valve', category: 'Actuators & Drive', protocol: 'Pneumatic / 12V', details: 'Pneumatic Actuator' },
+  Limelight: { label: 'Limelight 3/3G', category: 'Sensors & Vision', protocol: 'Ethernet / NetworkTables', details: 'Smart Vision Camera' },
+  PhotonVision: { label: 'PhotonVision Camera', category: 'Sensors & Vision', protocol: 'Ethernet / NetworkTables', details: 'Custom Vision Processor' },
+  CANcoder: { label: 'CTRE CANcoder', category: 'Sensors & Vision', protocol: 'CAN / CAN FD', details: 'Absolute Encoder' },
+  ThroughBore: { label: 'REV Through Bore', category: 'Sensors & Vision', protocol: 'DIO Duty Cycle', details: 'Quadrature Encoder' },
+  Pigeon2: { label: 'Pigeon 2.0 IMU', category: 'Sensors & Vision', protocol: 'CAN / CAN FD', details: '9-Axis Gyroscope' },
+  NavX2: { label: 'navX2-MXP Gyro', category: 'Sensors & Vision', protocol: 'SPI / CAN', details: 'Precision Gyro' },
+  LimitSwitch: { label: 'Limit Switch', category: 'Sensors & Vision', protocol: 'DIO Contact', details: 'Physical Hardstop Sensor' },
+  BeamBreak: { label: 'Beam-Break Sensor', category: 'Sensors & Vision', protocol: 'DIO Optical', details: 'Indexer Game Piece Sensor' },
+  TimeOfFlight: { label: 'LaserCAN / ToF Sensor', category: 'Sensors & Vision', protocol: 'CAN / I2C', details: 'Laser Distance Measurement' },
+  ColorSensor: { label: 'REV Color Sensor V3', category: 'Sensors & Vision', protocol: 'I2C / CAN', details: 'Color & Proximity Sensor' },
+  Coprocessor: { label: 'Linux Coprocessor', category: 'Coprocessors', protocol: 'USB / Ethernet', details: 'Orange Pi / Jetson' },
+};
+
+let deviceCounter = 1;
+
+export const useRobotStore = create<RobotStore>((set, get) => ({
   nodes: [],
   edges: [],
-  
-  onNodesChange: (c) => set({ nodes: applyNodeChanges(c, get().nodes) }),
-  onEdgesChange: (c) => set({ edges: applyEdgeChanges(c, get().edges) }),
-  onConnect: (connection) => {
-    const { nodes, edges } = get();
-    const targetNode = nodes.find((n) => n.id === connection.target);
-    const ruleKey = `${targetNode?.data.hardwareType}:${connection.targetHandle}`;
-    const rule = CONNECTION_RULES[ruleKey];
-    if (rule) {
-      if (rule.maxConnections !== undefined) {
-        const currentCount = edges.filter(
-          (e) => e.target === connection.target && e.targetHandle === connection.targetHandle
-        ).length;
-        if (currentCount >= rule.maxConnections) return;  
+
+  getPdhAllocations: () => {
+    const highMap = new Map<number, { nodeId: string; deviceLabel: string }>();
+    const lowMap = new Map<number, { nodeId: string; deviceLabel: string }>();
+    const switchedMap = new Map<number, { nodeId: string; deviceLabel: string }>();
+
+    const { edges, nodes } = get();
+
+    edges.forEach((edge) => {
+      const data = edge.data as FRCEdgeData | undefined;
+      if (!data) return;
+
+      const targetNode = nodes.find((n) => n.id === edge.target);
+      const label = targetNode?.data?.label || edge.target;
+
+      if (data.channelType === 'high' && typeof data.channelNum === 'number') {
+        highMap.set(data.channelNum, { nodeId: edge.target, deviceLabel: label });
+      } else if (data.channelType === 'low' && typeof data.channelNum === 'number') {
+        lowMap.set(data.channelNum, { nodeId: edge.target, deviceLabel: label });
+      } else if (data.channelType === 'switched' && typeof data.channelNum === 'number') {
+        switchedMap.set(data.channelNum, { nodeId: edge.target, deviceLabel: label });
       }
-      if (rule.allowedSourcePrefixes) {
-        const isAllowed = rule.allowedSourcePrefixes.some((prefix) =>
-          connection.sourceHandle?.startsWith(prefix)
-        );
-        if (!isAllowed) return;  
+    });
+
+    return { highMap, lowMap, switchedMap };
+  },
+
+  onNodesChange: (changes) => {
+    set({
+      nodes: applyNodeChanges(changes, get().nodes) as Node<FRCNodeData>[],
+    });
+  },
+
+  onEdgesChange: (changes) => {
+    const prevEdges = get().edges;
+    const nextEdges = applyEdgeChanges(changes, prevEdges);
+
+    if (nextEdges.length < prevEdges.length) {
+      const activePowerLabels = new Map<string, string>();
+      nextEdges.forEach((e) => {
+        const data = e.data as FRCEdgeData | undefined;
+        if (data?.channelType && data.channelNum !== undefined) {
+          const typeName = data.channelType === 'high' ? 'High' : data.channelType === 'low' ? 'Low' : 'Switchable';
+          activePowerLabels.set(e.target, `Port #${data.channelNum} (${typeName})`);
+        }
+      });
+
+      const updatedNodes = get().nodes.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          powerChannel: activePowerLabels.get(node.id),
+        },
+      }));
+
+      set({ nodes: updatedNodes, edges: nextEdges });
+      return;
+    }
+
+    set({ edges: nextEdges });
+  },
+
+  removeEdge: (edgeId: string) => {
+    const edge = get().edges.find((e) => e.id === edgeId);
+    if (!edge) return;
+
+    const remainingEdges = get().edges.filter((e) => e.id !== edgeId);
+
+    const updatedNodes = get().nodes.map((node) => {
+      if (node.id === edge.target) {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            powerChannel: undefined,
+          },
+        };
+      }
+      return node;
+    });
+
+    set({ nodes: updatedNodes, edges: remainingEdges });
+  },
+
+  onConnect: (connection) => {
+    const { nodes, edges, getPdhAllocations } = get();
+    const sourceNode = nodes.find((n) => n.id === connection.source);
+    const targetNode = nodes.find((n) => n.id === connection.target);
+
+    // ── Rule 0: PDH Power Channel Allocation Fix ──
+    const sourceHandle = connection.sourceHandle;
+    if (sourceNode?.data?.deviceType === 'PDH' && sourceHandle?.startsWith('pwr-')) {
+      const { highMap, lowMap, switchedMap } = getPdhAllocations();
+
+      let channelType: 'high' | 'low' | 'switched' | undefined;
+      let assignedPort: number | undefined;
+      let strokeColor = '#ef4444';
+      let strokeDasharray: string | undefined;
+
+      if (sourceHandle === 'pwr-high-out') {
+        channelType = 'high';
+        for (let i = 0; i < MAX_HIGH_CHANNELS; i++) {
+          if (!highMap.has(i)) {
+            assignedPort = i;
+            break;
+          }
+        }
+        if (assignedPort === undefined) {
+          alert("PDH High-Current Limit Reached: All 20 40A ATO channels (Ports 0–19) are occupied!");
+          return;
+        }
+        strokeColor = '#ef4444';
+      } else if (sourceHandle === 'pwr-low-out') {
+        channelType = 'low';
+        for (let i = 20; i < 20 + MAX_LOW_CHANNELS; i++) {
+          if (!lowMap.has(i)) {
+            assignedPort = i;
+            break;
+          }
+        }
+        if (assignedPort === undefined) {
+          alert("PDH Low-Current Limit Reached: All 3 15A ATM channels (Ports 20–22) are occupied!");
+          return;
+        }
+        strokeColor = '#f97316';
+      } else if (sourceHandle === 'pwr-switched-out') {
+        channelType = 'switched';
+        if (!switchedMap.has(23)) {
+          assignedPort = 23;
+        } else {
+          alert("PDH Switchable Channel Occupied: Port 23 is already in use!");
+          return;
+        }
+        strokeColor = '#e11d48';
+        strokeDasharray = '4 2';
+      }
+
+      if (channelType && assignedPort !== undefined) {
+        const channelTypeName = channelType === 'high' ? 'High' : channelType === 'low' ? 'Low' : 'Switchable';
+        const portLabel = `Port #${assignedPort} (${channelTypeName})`;
+
+        // Update target node power channel display label
+        const updatedNodes = get().nodes.map((n) => {
+          if (n.id === connection.target) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                powerChannel: portLabel,
+              },
+            };
+          }
+          return n;
+        });
+
+        set({
+          nodes: updatedNodes,
+          edges: addEdge(
+            {
+              ...connection,
+              type: 'smoothstep',
+              animated: false,
+              label: portLabel,
+              labelStyle: { fill: '#f8fafc', fontSize: 10, fontWeight: 700, fontFamily: 'monospace' },
+              labelBgStyle: { fill: '#0f172a', fillOpacity: 0.9, rx: 4, ry: 4 },
+              style: { stroke: strokeColor, strokeWidth: 3, strokeDasharray },
+              data: { channelType, channelNum: assignedPort },
+            },
+            get().edges
+          ),
+        });
+        return;
       }
     }
-    set({ edges: addEdge({ ...connection, animated: true, style: { stroke: '#94a3b8' } }, edges) });
+
+    const isCanConnection = connection.sourceHandle?.includes('can') || connection.targetHandle?.includes('can');
+
+    // Rule 1: CAN Bus MUST NOT originate from or connect to the FRC Radio
+    if (sourceNode?.data?.deviceType === 'RadioSwitch' || targetNode?.data?.deviceType === 'RadioSwitch') {
+      if (isCanConnection) {
+        alert("Violates FRC Rules: The CAN bus CANNOT start at or connect to the FRC Radio!");
+        return;
+      }
+    }
+
+    // Rule 2: FRC Radio Dedicated Port Allocation Rules
+    const isRadioSource = sourceNode?.data?.deviceType === 'RadioSwitch';
+    const isRadioTarget = targetNode?.data?.deviceType === 'RadioSwitch';
+
+    if (isRadioSource || isRadioTarget) {
+      const radioHandle = isRadioSource ? connection.sourceHandle : connection.targetHandle;
+      const otherNode = isRadioSource ? targetNode : sourceNode;
+
+      if (radioHandle === 'eth-rio') {
+        if (otherNode?.data?.deviceType !== 'roboRIO') {
+          alert("Violates FRC Rules: The Radio's RIO port is reserved exclusively for the RoboRIO!");
+          return;
+        }
+      }
+
+      if (radioHandle === 'eth-aux') {
+        const auxAlreadyOccupied = edges.some(
+          (e) => (e.sourceHandle === 'eth-aux' && e.source === (isRadioSource ? sourceNode.id : targetNode.id)) ||
+                 (e.targetHandle === 'eth-aux' && e.target === (isRadioSource ? sourceNode.id : targetNode.id))
+        );
+
+        if (auxAlreadyOccupied) {
+          alert("Radio AUX Port Occupied! The AUX port only supports 1 downstream connection.");
+          return;
+        }
+      }
+    }
+
+    // Rule 3: Main Power Sequence
+    if (sourceNode?.data?.deviceType === 'Battery12V') {
+      if (targetNode?.data?.deviceType !== 'MainBreaker120A') {
+        alert("Violates FRC Rules: The 12V Battery MUST connect directly to the 120A Main Circuit Breaker input!");
+        return;
+      }
+
+      set({
+        edges: addEdge(
+          {
+            ...connection,
+            type: 'smoothstep',
+            animated: false,
+            label: '12V Main Battery Link',
+            labelStyle: { fill: '#f8fafc', fontSize: 10, fontWeight: 700, fontFamily: 'monospace' },
+            labelBgStyle: { fill: '#0f172a', fillOpacity: 0.9, rx: 4, ry: 4 },
+            style: { stroke: '#dc2626', strokeWidth: 4 },
+          },
+          get().edges
+        ),
+      });
+      return;
+    }
+
+    if (sourceNode?.data?.deviceType === 'MainBreaker120A') {
+      if (targetNode?.data?.deviceType !== 'PDH' || connection.targetHandle !== 'pwr-12v-in') {
+        alert("The 120A Main Breaker output must connect to the REV PDH 12V Main Power Input.");
+        return;
+      }
+
+      set({
+        edges: addEdge(
+          {
+            ...connection,
+            type: 'smoothstep',
+            animated: false,
+            label: 'Protected 120A Bus',
+            labelStyle: { fill: '#f8fafc', fontSize: 10, fontWeight: 700, fontFamily: 'monospace' },
+            labelBgStyle: { fill: '#0f172a', fillOpacity: 0.9, rx: 4, ry: 4 },
+            style: { stroke: '#ef4444', strokeWidth: 4 },
+          },
+          get().edges
+        ),
+      });
+      return;
+    }
+
+    // Rule 4: Ethernet Connections
+    const isEthConnection = connection.sourceHandle?.includes('eth') || connection.targetHandle?.includes('eth');
+    if (isEthConnection) {
+      set({
+        edges: addEdge(
+          {
+            ...connection,
+            type: 'smoothstep',
+            animated: true,
+            label: 'Ethernet Link',
+            labelStyle: { fill: '#f8fafc', fontSize: 10, fontWeight: 700, fontFamily: 'monospace' },
+            labelBgStyle: { fill: '#0f172a', fillOpacity: 0.9, rx: 4, ry: 4 },
+            style: { stroke: '#10b981', strokeWidth: 2.5 },
+          },
+          get().edges
+        ),
+      });
+      return;
+    }
+
+    // Rule 5: Standard CAN Bus & Termination
+    const isCanTerminationPoint = targetNode?.data?.deviceType === 'PDH' && connection.targetHandle === 'can-term';
+    if (isCanConnection) {
+      let label = 'CAN Bus [Loop]';
+      if (connection.sourceHandle === 'can-start') label = 'CAN Bus [RIO Start]';
+      if (isCanTerminationPoint) label = 'CAN Bus [120Ω Terminated]';
+
+      set({
+        edges: addEdge(
+          {
+            ...connection,
+            type: 'smoothstep',
+            animated: true,
+            label,
+            labelStyle: { fill: '#f8fafc', fontSize: 10, fontWeight: 700, fontFamily: 'monospace' },
+            labelBgStyle: { fill: '#0f172a', fillOpacity: 0.9, rx: 4, ry: 4 },
+            style: { stroke: isCanTerminationPoint ? '#f59e0b' : '#eab308', strokeWidth: 2.5 },
+            data: { isCanTerminator: isCanTerminationPoint },
+          },
+          get().edges
+        ),
+      });
+      return;
+    }
+
+    // Default Connection
+    set({
+      edges: addEdge(
+        {
+          ...connection,
+          type: 'smoothstep',
+          animated: true,
+          style: { stroke: '#6366f1', strokeWidth: 2.5 },
+        },
+        get().edges
+      ),
+    });
   },
 
   addDevice: (type: string) => {
-    const id = `${type.toLowerCase()}_${Date.now()}`;
-    const defaultData: RobotNodeData = {
-      label: `${type.toLowerCase()}${get().nodes.length + 1}`,
-      hardwareType: type,
+    const config = FRC_DEVICE_DEFAULTS[type] || {
+      label: type,
+      category: 'Actuators & Drive',
+      protocol: 'CAN Bus',
+      details: 'FRC Component',
     };
 
-    // If it's in the registry, attach the configuration
-    const blueprint = HARDWARE_LIBRARY[type];
-    if (blueprint) {
-      Object.assign(defaultData, blueprint);
-    }
+    const id = `${type.toLowerCase()}${deviceCounter++}`;
+    const nodeCount = get().nodes.length;
+    
+    const position = {
+      x: 100 + (nodeCount % 3) * 350,
+      y: 80 + Math.floor(nodeCount / 3) * 230,
+    };
 
-    // Determine React Flow nodeType mapping
-    // If it's the massive Control Hub, use the custom one. Otherwise, default to StandardNode.
-    const reactFlowType = type === 'ControlHub' ? 'ControlHub' : 'StandardNode';
+    const isController = ['roboRIO', 'PDH', 'RadioSwitch', 'MainBreaker120A', 'CANivore', 'PneumaticsHub'].includes(type);
 
-    set({ nodes: [...get().nodes, {
+    const newNode: Node<FRCNodeData> = {
       id,
-      type: reactFlowType,
-      position: { x: 300 + Math.random() * 50, y: 200 + Math.random() * 50 },
-      data: defaultData,
-    }] });
+      type: isController ? 'ControlHub' : 'StandardNode',
+      position,
+      data: {
+        label: `${config.label} (${id})`,
+        deviceType: type,
+        category: config.category,
+        protocol: config.protocol,
+        details: config.details,
+        canId: !['PDH', 'roboRIO', 'Battery12V', 'MainBreaker120A', 'RadioSwitch', 'RSL', 'PWMServo', 'Compressor', 'LimitSwitch', 'BeamBreak', 'PressureSwitch', 'BuckConverter'].includes(type) ? (nodeCount % 62) + 1 : undefined,
+        dioPort: ['LimitSwitch', 'BeamBreak', 'ThroughBore'].includes(type) ? nodeCount % 10 : undefined,
+        pwmPort: type === 'PWMServo' ? nodeCount % 10 : undefined,
+      },
+    };
+
+    set({
+      nodes: [...get().nodes, newNode],
+    });
   },
 
-  updateNodeLabel: (id, label) => set({
-    nodes: get().nodes.map((n) => n.id === id ? { ...n, data: { ...n.data, label } } : n)
-  }),
-  deleteNode: (id) => set({
-    nodes: get().nodes.filter((n) => n.id !== id),
-    edges: get().edges.filter((e) => e.source !== id && e.target !== id),
-  }),
-  clearWorkspace: () => set({ nodes: [], edges: [] })
+  removeNode: (id: string) => {
+    set({
+      nodes: get().nodes.filter((node) => node.id !== id),
+      edges: get().edges.filter((edge) => edge.source !== id && edge.target !== id),
+    });
+  },
+
+  clearWorkspace: () => set({ nodes: [], edges: [] }),
+  setNodes: (nodes) => set({ nodes }),
+  setEdges: (edges) => set({ edges }),
 }));
