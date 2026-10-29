@@ -26,6 +26,7 @@
     "@hello-pangea/dnd": "^18.0.1",
     "@monaco-editor/react": "^4.7.0",
     "@xyflow/react": "^12.11.1",
+    "daisyui": "^5.7.50",
     "electron-updater": "^6.3.9",
     "html-to-image": "^1.11.13",
     "jspdf": "^4.2.1",
