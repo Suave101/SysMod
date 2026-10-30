@@ -3,6 +3,16 @@ import { Handle, Position, NodeProps } from '@xyflow/react';
 import { Trash2, Box, Wind, Camera, Radio, Activity, BatteryCharging, Cpu, Lightbulb, Sliders, Eye } from 'lucide-react';
 import { useRobotStore, FRCNodeData } from '../store/useRobotStore';
 
+const SINGLE_PORT_DEVICES: Record<string, { handle: string; label: string; isInput: boolean }> = {
+  PWMServo: { handle: 'pwm-in', label: 'PWM Signal In', isInput: true },
+  Compressor: { handle: 'comp-in', label: 'Pneumatic Hub Power In', isInput: true },
+  SolenoidValve: { handle: 'sol-in', label: 'Solenoid Channel In', isInput: true },
+  PressureSwitch: { handle: 'press-out', label: 'Switch Signal Out', isInput: false },
+  ColorSensor: { handle: 'i2c-out', label: 'I2C To roboRIO', isInput: false },
+  NavX2: { handle: 'mxp-out', label: 'MXP To roboRIO', isInput: false },
+  PhotonVision: { handle: 'usb-out', label: 'USB To Coprocessor', isInput: false },
+};
+
 export const StandardNode: React.FC<NodeProps> = ({ id, data }) => {
   const nodeData = data as unknown as FRCNodeData;
   const removeNode = useRobotStore((state) => state.removeNode);
@@ -64,14 +74,14 @@ export const StandardNode: React.FC<NodeProps> = ({ id, data }) => {
     );
   }
 
-  // ── Buck Converter Component ──
-  if (deviceType === 'BuckConverter') {
+  // ── Buck Converter, VRM & Mini Power Module Components ──
+  if (['BuckConverter', 'VRM', 'MPM'].includes(deviceType)) {
     return (
       <div className="relative group min-w-[240px] bg-slate-900 border-2 border-sky-500/80 rounded-xl p-3 shadow-2xl">
         <div className="flex items-center justify-between pb-2 border-b border-slate-800">
           <div className="flex items-center gap-2">
             <Sliders className="w-4 h-4 text-sky-400" />
-            <span className="font-mono text-xs font-bold text-slate-200">DC-DC Buck Converter</span>
+            <span className="font-mono text-xs font-bold text-slate-200">{nodeData.label || id}</span>
           </div>
           <button onClick={() => removeNode(id)} className="text-slate-500 hover:text-red-400 transition">
             <Trash2 className="w-3.5 h-3.5" />
@@ -85,8 +95,8 @@ export const StandardNode: React.FC<NodeProps> = ({ id, data }) => {
             <span className="text-slate-500 text-[8px]">PDH Low Ch</span>
           </div>
           <div className="flex items-center justify-between text-[9px] font-mono text-sky-400 bg-slate-950/90 px-2 py-1 rounded border border-sky-500/20 relative">
-            <span>5V/12V Regulated Out</span>
-            <Handle type="source" position={Position.Right} id="pwr-regulated-out" className="w-3 h-3 !bg-sky-400 !border-2 !border-slate-950 rounded-full !right-[-11px]" />
+            <span>{deviceType === 'MPM' ? 'Fused 12V Out' : '5V/12V Regulated Out'}</span>
+            <Handle type="source" position={Position.Right} id={deviceType === 'MPM' ? 'pwr-mpm-out' : 'pwr-regulated-out'} className="w-3 h-3 !bg-sky-400 !border-2 !border-slate-950 rounded-full !right-[-11px]" />
           </div>
         </div>
       </div>
@@ -99,7 +109,6 @@ export const StandardNode: React.FC<NodeProps> = ({ id, data }) => {
     if (['LimitSwitch', 'BeamBreak', 'ThroughBore'].includes(deviceType)) {
       return (
         <div className="flex items-center justify-between text-[9px] font-mono text-purple-400 bg-slate-950/90 px-2 py-1 rounded border border-purple-500/20 relative">
-          <Handle type="target" position={Position.Left} id="dio-in" className="w-3 h-3 !bg-purple-500 !border-2 !border-slate-950 rounded-full !left-[-11px]" />
           <span>DIO Signal Output</span>
           <span className="text-purple-300">Port #{nodeData.dioPort || 0}</span>
           <Handle type="source" position={Position.Right} id="dio-out" className="w-3 h-3 !bg-purple-400 !border-2 !border-slate-950 rounded-full !right-[-11px]" />
@@ -107,8 +116,21 @@ export const StandardNode: React.FC<NodeProps> = ({ id, data }) => {
       );
     }
 
-    // Vision Cameras (Limelight, PhotonVision)
-    if (['Limelight', 'PhotonVision', 'Coprocessor'].includes(deviceType)) {
+    // Single-Wire Devices
+    const singlePort = SINGLE_PORT_DEVICES[deviceType];
+    if (singlePort) {
+      return (
+        <div className="flex items-center justify-between text-[9px] font-mono text-sky-400 bg-slate-950/90 px-2 py-1 rounded border border-sky-500/20 relative">
+          {singlePort.isInput && <Handle type="target" position={Position.Left} id={singlePort.handle} className="w-3 h-3 !bg-sky-400 !border-2 !border-slate-950 rounded-full !left-[-11px]" />}
+          <span>{singlePort.label}</span>
+          {nodeData.pwmPort !== undefined && <span className="text-purple-300">Port #{nodeData.pwmPort}</span>}
+          {!singlePort.isInput && <Handle type="source" position={Position.Right} id={singlePort.handle} className="w-3 h-3 !bg-sky-400 !border-2 !border-slate-950 rounded-full !right-[-11px]" />}
+        </div>
+      );
+    }
+
+    // Limelight Smart Camera & Coprocessors
+    if (['Limelight', 'Coprocessor'].includes(deviceType)) {
       return (
         <>
           <div className="flex items-center justify-between text-[9px] font-mono text-red-400 bg-slate-950/90 px-2 py-1 rounded border border-red-500/20 relative">
@@ -121,6 +143,12 @@ export const StandardNode: React.FC<NodeProps> = ({ id, data }) => {
             <span>Ethernet Data</span>
             <Handle type="source" position={Position.Right} id="eth-out" className="w-3 h-3 !bg-emerald-500 !border-2 !border-slate-950 rounded-full !right-[-11px]" />
           </div>
+          {deviceType === 'Coprocessor' && (
+            <div className="flex items-center justify-between text-[9px] font-mono text-indigo-400 bg-slate-950/90 px-2 py-1 rounded border border-indigo-500/20 relative">
+              <Handle type="target" position={Position.Left} id="usb-in" className="w-3 h-3 !bg-indigo-500 !border-2 !border-slate-950 rounded-full !left-[-11px]" />
+              <span>USB Camera In</span>
+            </div>
+          )}
         </>
       );
     }
@@ -152,7 +180,7 @@ export const StandardNode: React.FC<NodeProps> = ({ id, data }) => {
            ['SolenoidValve', 'Compressor', 'PressureSwitch'].includes(deviceType) ? <Wind className="w-4 h-4 text-sky-400" /> :
            ['Pigeon2', 'NavX2'].includes(deviceType) ? <Radio className="w-4 h-4 text-rose-400" /> :
            ['LimitSwitch', 'BeamBreak'].includes(deviceType) ? <Eye className="w-4 h-4 text-purple-400" /> :
-           ['KrakenX60', 'Falcon500'].includes(deviceType) ? <Activity className="w-4 h-4 text-emerald-400" /> :
+           ['KrakenX60', 'KrakenX44', 'Falcon500'].includes(deviceType) ? <Activity className="w-4 h-4 text-emerald-400" /> :
            deviceType === 'Coprocessor' ? <Cpu className="w-4 h-4 text-indigo-400" /> :
            <Box className="w-4 h-4 text-cyan-400" />}
           <span className="font-mono text-xs font-bold text-slate-200 truncate max-w-[140px]">

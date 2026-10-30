@@ -12,7 +12,7 @@ interface CodeViewerModalProps {
   pythonCode?: string;
 }
 
-const beforeMonacoMount: BeforeMount = (monaco) => {
+export const beforeMonacoMount: BeforeMount = (monaco) => {
   if (!monaco.languages.getLanguages().some((l) => l.id === 'aadl')) {
     monaco.languages.register({ id: 'aadl', extensions: ['.aadl'], aliases: ['AADL'] });
 
@@ -62,7 +62,7 @@ const beforeMonacoMount: BeforeMount = (monaco) => {
   });
 };
 
-const EDITOR_OPTIONS = {
+export const EDITOR_OPTIONS = {
   readOnly: true,
   fontSize: 13,
   fontFamily: '"JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, "Courier New", monospace',

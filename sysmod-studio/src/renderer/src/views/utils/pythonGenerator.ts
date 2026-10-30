@@ -2,7 +2,7 @@ import { Node, Edge } from '@xyflow/react';
 import { FRCNodeData } from '../store/useRobotStore';
 
 export function generatePythonCode(nodes: Node<FRCNodeData>[], edges: Edge[]): string {
-  const motors = nodes.filter((n) => ['KrakenX60', 'Falcon500', 'SparkMaxNEO', 'NEOVortex', 'NEO550', 'PWMServo', 'BrushedController'].includes(n.data?.deviceType || ''));
+  const motors = nodes.filter((n) => ['KrakenX60', 'KrakenX44', 'Falcon500', 'SparkMaxNEO', 'NEOVortex', 'NEO550', 'PWMServo', 'BrushedController'].includes(n.data?.deviceType || ''));
   const sensors = nodes.filter((n) => ['CANcoder', 'Pigeon2', 'NavX2', 'ThroughBore', 'Limelight', 'PhotonVision', 'LimitSwitch', 'BeamBreak', 'TimeOfFlight', 'ColorSensor'].includes(n.data?.deviceType || ''));
   const pneumatics = nodes.filter((n) => ['SolenoidValve', 'Compressor', 'PressureSwitch'].includes(n.data?.deviceType || ''));
   const canivorePresent = nodes.some((n) => n.data?.deviceType === 'CANivore');
@@ -12,7 +12,7 @@ import wpilib.drive
 import commands2
 `;
 
-  if (nodes.some((n) => ['KrakenX60', 'Falcon500', 'Pigeon2', 'CANcoder'].includes(n.data?.deviceType || ''))) {
+  if (nodes.some((n) => ['KrakenX60', 'KrakenX44', 'Falcon500', 'Pigeon2', 'CANcoder'].includes(n.data?.deviceType || ''))) {
     code += `import phoenix6\n`;
   }
   if (nodes.some((n) => ['SparkMaxNEO', 'NEO550', 'NEOVortex', 'BrushedController'].includes(n.data?.deviceType || ''))) {
@@ -43,9 +43,11 @@ import commands2
       const pwmPort = m.data?.pwmPort || 0;
       const dev = m.data?.deviceType;
 
-      if (dev === 'KrakenX60' || dev === 'Falcon500') {
+      if (dev === 'KrakenX60' || dev === 'KrakenX44' || dev === 'Falcon500') {
         code += `        self.${varName} = phoenix6.hardware.TalonFX(${canId}${busArg})\n`;
-      } else if (dev === 'SparkMaxNEO' || dev === 'NEO550' || dev === 'BrushedController') {
+      } else if (dev === 'BrushedController') {
+        code += `        self.${varName} = rev.CANSparkMax(${canId}, rev.CANSparkLowLevel.MotorType.kBrushed)\n`;
+      } else if (dev === 'SparkMaxNEO' || dev === 'NEO550') {
         code += `        self.${varName} = rev.CANSparkMax(${canId}, rev.CANSparkLowLevel.MotorType.kBrushless)\n`;
       } else if (dev === 'NEOVortex') {
         code += `        self.${varName} = rev.CANSparkFlex(${canId}, rev.CANSparkLowLevel.MotorType.kBrushless)\n`;

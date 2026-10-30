@@ -1,6 +1,6 @@
 import React from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
-import { Cpu, Zap, Trash2, Power, Wifi, ShieldAlert, Radio, Lock, Share2 } from 'lucide-react';
+import { Cpu, Zap, Trash2, Power, Wifi, ShieldAlert, Radio, Lock, Share2, Wind } from 'lucide-react';
 import { useRobotStore, FRCNodeData } from '../store/useRobotStore';
 
 export const ControlHubNode: React.FC<NodeProps> = ({ id, data }) => {
@@ -23,7 +23,7 @@ export const ControlHubNode: React.FC<NodeProps> = ({ id, data }) => {
             <div>
               <h3 className="font-mono text-xs font-black text-slate-100">{nodeData.label || id}</h3>
               <span className="text-[9px] font-mono text-emerald-400 uppercase tracking-wider block font-bold">
-                VH-109 FRC Radio (2-Port)
+                VH-109 FRC Radio (4-Port)
               </span>
             </div>
           </div>
@@ -67,17 +67,36 @@ export const ControlHubNode: React.FC<NodeProps> = ({ id, data }) => {
             <div className="flex items-center gap-1">
               <Share2 className="w-3 h-3 text-emerald-400 shrink-0" />
               <div>
-                <span className="font-bold block">AUX Port (Auxiliary)</span>
+                <span className="font-bold block">AUX1 Port</span>
                 <span className="text-slate-500 text-[8px]">Coprocessor / Limelight / Switch</span>
               </div>
             </div>
             <span className="text-emerald-400 font-bold text-[8px] bg-emerald-950/60 px-1 py-0.5 rounded border border-emerald-500/30">
-              1 Slot Available
+              1 Device
             </span>
             <Handle
               type="source"
               position={Position.Right}
               id="eth-aux"
+              className="w-3.5 h-3.5 !bg-emerald-500 !border-2 !border-slate-950 rounded-full !right-[-12px]"
+            />
+          </div>
+
+          <div className="flex items-center justify-between text-[9px] font-mono text-emerald-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-emerald-500/40 relative">
+            <div className="flex items-center gap-1">
+              <Share2 className="w-3 h-3 text-emerald-400 shrink-0" />
+              <div>
+                <span className="font-bold block">AUX2 Port</span>
+                <span className="text-slate-500 text-[8px]">Coprocessor / Limelight / Switch</span>
+              </div>
+            </div>
+            <span className="text-emerald-400 font-bold text-[8px] bg-emerald-950/60 px-1 py-0.5 rounded border border-emerald-500/30">
+              1 Device
+            </span>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id="eth-aux2"
               className="w-3.5 h-3.5 !bg-emerald-500 !border-2 !border-slate-950 rounded-full !right-[-12px]"
             />
           </div>
@@ -210,6 +229,58 @@ export const ControlHubNode: React.FC<NodeProps> = ({ id, data }) => {
     );
   }
 
+  // ── REV Pneumatic Hub Node ──
+  if (deviceType === 'PneumaticsHub') {
+    return (
+      <div className="relative min-w-[290px] bg-slate-900 border-2 border-sky-500/80 rounded-xl p-4 shadow-2xl">
+        <div className="flex items-center justify-between pb-2.5 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <Wind className="w-5 h-5 text-sky-400" />
+            <div>
+              <h3 className="font-mono text-xs font-black text-slate-100">{nodeData.label || id}</h3>
+              <span className="text-[9px] font-mono text-sky-400 uppercase tracking-wider block font-bold">
+                Pneumatic Hub (16 Channels)
+              </span>
+            </div>
+          </div>
+          <button onClick={() => removeNode(id)} className="text-slate-500 hover:text-red-400 transition">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <div className="mt-3 space-y-2">
+          <div className="flex items-center justify-between text-[9px] font-mono text-red-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-red-500/30 relative">
+            <Handle type="target" position={Position.Left} id="pwr-12v-in" className="w-3.5 h-3.5 !bg-red-500 !border-2 !border-slate-950 rounded-full !left-[-12px]" />
+            <span className="font-bold">12V Power In</span>
+            <span className="text-amber-400 font-bold text-[8px]">{nodeData.powerChannel || 'Unassigned'}</span>
+          </div>
+
+          <div className="flex items-center justify-between text-[9px] font-mono text-amber-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-amber-500/40 relative">
+            <Handle type="target" position={Position.Left} id="can-in" className="w-3.5 h-3.5 !bg-amber-400 !border-2 !border-slate-950 rounded-full !left-[-12px]" />
+            <span className="font-bold">CAN In</span>
+            <span className="font-bold">CAN Out</span>
+            <Handle type="source" position={Position.Right} id="can-out" className="w-3.5 h-3.5 !bg-amber-400 !border-2 !border-slate-950 rounded-full !right-[-12px]" />
+          </div>
+
+          <div className="flex items-center justify-between text-[9px] font-mono text-sky-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-sky-500/30 relative">
+            <Handle type="target" position={Position.Left} id="press-in" className="w-3.5 h-3.5 !bg-sky-400 !border-2 !border-slate-950 rounded-full !left-[-12px]" />
+            <span className="font-bold">Pressure Switch In</span>
+          </div>
+
+          <div className="flex items-center justify-between text-[9px] font-mono text-sky-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-sky-500/30 relative">
+            <span className="font-bold">Compressor Out</span>
+            <Handle type="source" position={Position.Right} id="comp-out" className="w-3.5 h-3.5 !bg-sky-400 !border-2 !border-slate-950 rounded-full !right-[-12px]" />
+          </div>
+
+          <div className="flex items-center justify-between text-[9px] font-mono text-cyan-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-cyan-500/30 relative">
+            <span className="font-bold">Solenoid Channels (0–15)</span>
+            <Handle type="source" position={Position.Right} id="sol-out" className="w-3.5 h-3.5 !bg-cyan-400 !border-2 !border-slate-950 rounded-full !right-[-12px]" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── roboRIO 2.0 Main Controller ──
   return (
     <div className="relative min-w-[290px] bg-slate-900 border-2 border-indigo-500/80 rounded-xl p-4 shadow-2xl">
@@ -237,7 +308,7 @@ export const ControlHubNode: React.FC<NodeProps> = ({ id, data }) => {
 
         <div className="flex items-center justify-between text-[9px] font-mono text-yellow-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-yellow-500/40 relative">
           <span className="font-bold">RSL Status Port</span>
-          <span className="text-yellow-300 text-[8px]">To Allen-Bradley RSL</span>
+          <span className="text-yellow-300 text-[8px]">To RSL</span>
           <Handle type="source" position={Position.Right} id="rsl-out" className="w-3.5 h-3.5 !bg-yellow-400 !border-2 !border-slate-950 rounded-full !right-[-12px]" />
         </div>
 
@@ -252,6 +323,25 @@ export const ControlHubNode: React.FC<NodeProps> = ({ id, data }) => {
           <span className="font-bold">Ethernet Port</span>
           <span className="text-slate-500 text-[8px]">To Radio RIO Port</span>
           <Handle type="source" position={Position.Right} id="eth-out" className="w-3.5 h-3.5 !bg-emerald-500 !border-2 !border-slate-950 rounded-full !right-[-12px]" />
+        </div>
+
+        <div className="flex items-center justify-between text-[9px] font-mono text-purple-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-purple-500/30 relative">
+          <Handle type="target" position={Position.Left} id="dio-in" className="w-3.5 h-3.5 !bg-purple-500 !border-2 !border-slate-950 rounded-full !left-[-12px]" />
+          <span className="font-bold">DIO (0–9)</span>
+          <span className="font-bold">PWM (0–9)</span>
+          <Handle type="source" position={Position.Right} id="pwm-out" className="w-3.5 h-3.5 !bg-purple-400 !border-2 !border-slate-950 rounded-full !right-[-12px]" />
+        </div>
+
+        <div className="flex items-center justify-between text-[9px] font-mono text-indigo-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-indigo-500/30 relative">
+          <Handle type="target" position={Position.Left} id="i2c-in" className="w-3.5 h-3.5 !bg-indigo-400 !border-2 !border-slate-950 rounded-full !left-[-12px]" />
+          <span className="font-bold">I2C</span>
+          <span className="font-bold">USB Host (x2)</span>
+          <Handle type="source" position={Position.Right} id="usb-out" className="w-3.5 h-3.5 !bg-indigo-500 !border-2 !border-slate-950 rounded-full !right-[-12px]" />
+        </div>
+
+        <div className="flex items-center justify-between text-[9px] font-mono text-indigo-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-indigo-500/30 relative">
+          <Handle type="target" position={Position.Left} id="mxp-in" className="w-3.5 h-3.5 !bg-indigo-400 !border-2 !border-slate-950 rounded-full !left-[-12px]" />
+          <span className="font-bold">MXP Expansion</span>
         </div>
       </div>
     </div>

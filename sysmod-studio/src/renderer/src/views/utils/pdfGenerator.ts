@@ -1,45 +1,15 @@
 import { Node, Edge } from '@xyflow/react';
-import { FRCNodeData } from '../store/useRobotStore';
+import { FRCNodeData, FRC_DEVICE_DEFAULTS } from '../store/useRobotStore';
+import { getDevicePorts } from './aadlGenerator';
 import { verifySystemProperties } from './systemVerifier';
 
 export interface HardwareCostMap {
   [key: string]: number;
 }
 
-const DEFAULT_COSTS: HardwareCostMap = {
-  Battery12V: 50.00,
-  MainBreaker120A: 35.00,
-  PDH: 240.00,
-  roboRIO: 450.00,
-  RSL: 35.00,
-  RadioSwitch: 150.00,
-  PneumaticsHub: 120.00,
-  PressureSwitch: 15.00,
-  VRM_MPM: 45.00,
-  BuckConverter: 15.00,
-  CANivore: 300.00,
-  CANHub: 25.00,
-  KrakenX60: 180.00,
-  Falcon500: 180.00,
-  SparkMaxNEO: 125.00,
-  NEOVortex: 180.00,
-  NEO550: 45.00,
-  BrushedController: 50.00,
-  PWMServo: 20.00,
-  Compressor: 110.00,
-  SolenoidValve: 45.00,
-  Limelight: 400.00,
-  PhotonVision: 120.00,
-  CANcoder: 65.00,
-  ThroughBore: 45.00,
-  Pigeon2: 199.00,
-  NavX2: 100.00,
-  LimitSwitch: 10.00,
-  BeamBreak: 15.00,
-  TimeOfFlight: 35.00,
-  ColorSensor: 20.00,
-  Coprocessor: 120.00,
-};
+const DEFAULT_COSTS: HardwareCostMap = Object.fromEntries(
+  Object.entries(FRC_DEVICE_DEFAULTS).map(([type, device]) => [type, device.cost]),
+);
 
 const REF_DES_PREFIX: Record<string, string> = {
   Battery12V: 'BT',
@@ -50,6 +20,7 @@ const REF_DES_PREFIX: Record<string, string> = {
   RSL: 'DS',
   PneumaticsHub: 'U',
   KrakenX60: 'M',
+  KrakenX44: 'M',
   Falcon500: 'M',
   SparkMaxNEO: 'M',
   NEO550: 'M',
@@ -122,12 +93,17 @@ function getDevicePinSpecs(devType: string): DevicePinSpecs {
     roboRIO: {
       inputs: [
         { id: 'pwr-12v-in', label: '12V PWR IN' },
-        { id: 'eth-in', label: 'ETH IN' }
+        { id: 'eth-in', label: 'ETH IN' },
+        { id: 'dio-in', label: 'DIO 0-9' },
+        { id: 'i2c-in', label: 'I2C' },
+        { id: 'mxp-in', label: 'MXP' }
       ],
       outputs: [
         { id: 'can-start', label: 'CAN BUS START' },
         { id: 'rsl-out', label: 'RSL OUT' },
-        { id: 'eth-out', label: 'ETH OUT' }
+        { id: 'eth-out', label: 'ETH OUT' },
+        { id: 'pwm-out', label: 'PWM 0-9' },
+        { id: 'usb-out', label: 'USB HOST' }
       ]
     },
     RadioSwitch: {
@@ -136,7 +112,8 @@ function getDevicePinSpecs(devType: string): DevicePinSpecs {
         { id: 'eth-rio', label: 'RIO PORT (ETH)' }
       ],
       outputs: [
-        { id: 'eth-aux', label: 'AUX PORT (ETH)' }
+        { id: 'eth-aux', label: 'AUX1 PORT (ETH)' },
+        { id: 'eth-aux2', label: 'AUX2 PORT (ETH)' }
       ]
     },
     RSL: {
@@ -144,15 +121,6 @@ function getDevicePinSpecs(devType: string): DevicePinSpecs {
         { id: 'rsl-in', label: 'RSL SIGNAL IN' }
       ],
       outputs: []
-    },
-    CANivore: {
-      inputs: [
-        { id: 'usb-in', label: 'USB IN' },
-        { id: 'pwr-12v-in', label: '12V PWR IN' }
-      ],
-      outputs: [
-        { id: 'can-fd-start', label: 'CAN FD START' }
-      ]
     }
   };
 
@@ -160,36 +128,9 @@ function getDevicePinSpecs(devType: string): DevicePinSpecs {
     return pinSpecsMap[devType];
   }
 
-  // Actuators & Motors
-  if (['KrakenX60', 'Falcon500', 'SparkMaxNEO', 'NEOVortex', 'NEO550', 'BrushedController'].includes(devType)) {
-    return {
-      inputs: [
-        { id: 'pwr-12v-in', label: '12V PWR IN' },
-        { id: 'can-in', label: 'CAN IN' }
-      ],
-      outputs: [
-        { id: 'can-out', label: 'CAN OUT' }
-      ]
-    };
-  }
-
-  // Vision & Coprocessors
-  if (['Limelight', 'PhotonVision', 'Coprocessor'].includes(devType)) {
-    return {
-      inputs: [
-        { id: 'pwr-12v-in', label: '12V PWR IN' },
-        { id: 'eth-in', label: 'ETH IN' }
-      ],
-      outputs: [
-        { id: 'eth-out', label: 'ETH OUT' }
-      ]
-    };
-  }
-
-  return {
-    inputs: [{ id: 'in', label: 'IN' }],
-    outputs: [{ id: 'out', label: 'OUT' }]
-  };
+  const toPin = (id: string): TerminalPin => ({ id, label: id.replace(/-/g, ' ').toUpperCase() });
+  const ports = getDevicePorts(devType);
+  return { inputs: ports.in.map(toPin), outputs: ports.out.map(toPin) };
 }
 
 /**
@@ -200,7 +141,8 @@ function calculateEdaLayout(nodes: Node<FRCNodeData>[]): Map<string, Point> {
     Battery12V: 0,
     MainBreaker120A: 1,
     PDH: 1,
-    VRM_MPM: 1,
+    VRM: 1,
+    MPM: 1,
     BuckConverter: 1,
     roboRIO: 2,
     RadioSwitch: 2,

@@ -20,7 +20,7 @@ export const MAX_SWITCHED_CHANNELS = 1; // Port 23 (15A ATM Switchable)
 export interface FRCNodeData extends Record<string, unknown> {
   label: string;
   deviceType: string;
-  category: 'Control & Power' | 'Actuators & Drive' | 'Sensors & Vision' | 'Coprocessors';
+  category: DeviceCategory;
   canId?: number;
   dioPort?: number;
   pwmPort?: number;
@@ -70,40 +70,70 @@ export const WIRE_STYLES: Record<string, { color: string; label: string; animate
   usb: { color: '#6366f1', label: 'USB Data Link', animated: false, strokeWidth: 2 },
 };
 
-const FRC_DEVICE_DEFAULTS: Record<string, { label: string; category: FRCNodeData['category']; protocol: string; details: string }> = {
-  Battery12V: { label: '12V FRC Battery', category: 'Control & Power', protocol: '12V DC (SB50)', details: '12V 18Ah SLA Battery' },
-  MainBreaker120A: { label: '120A Main Breaker', category: 'Control & Power', protocol: 'High Current Pass', details: 'Primary System Power Switch' },
-  PDH: { label: 'REV PDH', category: 'Control & Power', protocol: '12V Power / CAN', details: '20 High / 3 Low / 1 Switched' },
-  roboRIO: { label: 'roboRIO 2.0', category: 'Control & Power', protocol: 'CAN / Eth / USB / DIO', details: 'Main Robot Controller' },
-  RSL: { label: 'Robot Signal Light (RSL)', category: 'Control & Power', protocol: 'RSL Signal', details: 'Allen-Bradley Status Light' },
-  RadioSwitch: { label: 'VH-109 FRC Radio', category: 'Control & Power', protocol: 'Ethernet / Passive PoE', details: '2-Port Managed FRC Radio' },
-  PneumaticsHub: { label: 'Pneumatics Hub', category: 'Control & Power', protocol: 'CAN / Pneumatic', details: 'PCM/PH Controller' },
-  PressureSwitch: { label: 'Pneumatic Pressure Switch', category: 'Control & Power', protocol: 'Cutoff Switch Signal', details: '120 PSI Auto Cutoff Switch' },
-  VRM_MPM: { label: 'Mini Power Module / VRM', category: 'Control & Power', protocol: 'Aux Power', details: 'Regulated Aux Power Board' },
-  BuckConverter: { label: '5V/12V Buck Converter', category: 'Control & Power', protocol: 'DC-DC Regulated', details: 'Clean Power for Coprocessors' },
-  CANivore: { label: 'CTRE CANivore', category: 'Control & Power', protocol: 'USB to CAN FD', details: 'Secondary CAN FD Bus Adapter' },
-  CANHub: { label: 'WCP CAN Bus Hub', category: 'Control & Power', protocol: 'CAN Splitter', details: 'CAN Bus Distribution Board' },
-  BrushedController: { label: 'Talon SRX / SPARK', category: 'Actuators & Drive', protocol: 'CAN / PWM', details: 'Brushed Motor Controller' },
-  KrakenX60: { label: 'Kraken X60 Motor', category: 'Actuators & Drive', protocol: 'CAN FD / Talon FX', details: 'Brushless Actuator' },
-  Falcon500: { label: 'Falcon 500 Motor', category: 'Actuators & Drive', protocol: 'CAN / Talon FX', details: 'Integrated Brushless Motor' },
-  SparkMaxNEO: { label: 'NEO + SPARK Max', category: 'Actuators & Drive', protocol: 'CAN Bus / PWM', details: 'Brushless Controller' },
-  NEOVortex: { label: 'NEO Vortex + SPARK Flex', category: 'Actuators & Drive', protocol: 'CAN Bus / PWM', details: 'High Output Motor' },
-  NEO550: { label: 'NEO 550 Motor', category: 'Actuators & Drive', protocol: 'CAN Bus / PWM', details: 'Compact Brushless' },
-  PWMServo: { label: 'PWM Servo Motor', category: 'Actuators & Drive', protocol: 'PWM Signal', details: 'Standard Servo' },
-  Compressor: { label: 'Pneumatic Compressor', category: 'Actuators & Drive', protocol: '12V Pneumatic Power', details: 'Air Compressor' },
-  SolenoidValve: { label: 'Solenoid Valve', category: 'Actuators & Drive', protocol: 'Pneumatic / 12V', details: 'Pneumatic Actuator' },
-  Limelight: { label: 'Limelight 3/3G', category: 'Sensors & Vision', protocol: 'Ethernet / NetworkTables', details: 'Smart Vision Camera' },
-  PhotonVision: { label: 'PhotonVision Camera', category: 'Sensors & Vision', protocol: 'Ethernet / NetworkTables', details: 'Custom Vision Processor' },
-  CANcoder: { label: 'CTRE CANcoder', category: 'Sensors & Vision', protocol: 'CAN / CAN FD', details: 'Absolute Encoder' },
-  ThroughBore: { label: 'REV Through Bore', category: 'Sensors & Vision', protocol: 'DIO Duty Cycle', details: 'Quadrature Encoder' },
-  Pigeon2: { label: 'Pigeon 2.0 IMU', category: 'Sensors & Vision', protocol: 'CAN / CAN FD', details: '9-Axis Gyroscope' },
-  NavX2: { label: 'navX2-MXP Gyro', category: 'Sensors & Vision', protocol: 'SPI / CAN', details: 'Precision Gyro' },
-  LimitSwitch: { label: 'Limit Switch', category: 'Sensors & Vision', protocol: 'DIO Contact', details: 'Physical Hardstop Sensor' },
-  BeamBreak: { label: 'Beam-Break Sensor', category: 'Sensors & Vision', protocol: 'DIO Optical', details: 'Indexer Game Piece Sensor' },
-  TimeOfFlight: { label: 'LaserCAN / ToF Sensor', category: 'Sensors & Vision', protocol: 'CAN / I2C', details: 'Laser Distance Measurement' },
-  ColorSensor: { label: 'REV Color Sensor V3', category: 'Sensors & Vision', protocol: 'I2C / CAN', details: 'Color & Proximity Sensor' },
-  Coprocessor: { label: 'Linux Coprocessor', category: 'Coprocessors', protocol: 'USB / Ethernet', details: 'Orange Pi / Jetson' },
+// Display order of the component palette
+export const DEVICE_CATEGORIES = [
+  'Power & Protection',
+  'Control & Communication',
+  'Motors & Controllers',
+  'Pneumatics',
+  'Sensors',
+  'Vision & Coprocessors',
+] as const;
+
+export type DeviceCategory = (typeof DEVICE_CATEGORIES)[number];
+
+// Single source for every device's name, group and estimated unit cost
+export const FRC_DEVICE_DEFAULTS: Record<string, { label: string; category: DeviceCategory; protocol: string; details: string; cost: number }> = {
+  Battery12V: { label: '12V FRC Battery', category: 'Power & Protection', protocol: '12V DC (SB50)', details: '12V 18Ah SLA Battery', cost: 50.00 },
+  MainBreaker120A: { label: '120A Main Breaker', category: 'Power & Protection', protocol: 'High Current Pass', details: 'Primary System Power Switch', cost: 35.00 },
+  PDH: { label: 'REV PDH', category: 'Power & Protection', protocol: '12V Power / CAN', details: '20 High / 3 Low / 1 Switchable', cost: 240.00 },
+  VRM: { label: 'CTRE Voltage Regulator Module', category: 'Power & Protection', protocol: 'Regulated 12V / 5V', details: 'Regulated 12V and 5V Outputs', cost: 45.00 },
+  MPM: { label: 'REV Mini Power Module', category: 'Power & Protection', protocol: 'Fused 12V', details: 'Passive Fused Power Splitter', cost: 25.00 },
+  BuckConverter: { label: '5V/12V Buck Converter', category: 'Power & Protection', protocol: 'DC-DC Regulated', details: 'Clean Power for Coprocessors', cost: 15.00 },
+
+  roboRIO: { label: 'roboRIO 2.0', category: 'Control & Communication', protocol: 'CAN / Eth / USB / DIO / PWM', details: 'Main Robot Controller', cost: 450.00 },
+  RadioSwitch: { label: 'VH-109 FRC Radio', category: 'Control & Communication', protocol: 'Ethernet / Passive PoE', details: '4-Port Wi-Fi 6E FRC Radio', cost: 150.00 },
+  RSL: { label: 'Robot Signal Light (RSL)', category: 'Control & Communication', protocol: 'RSL Signal', details: 'Robot Status Light', cost: 35.00 },
+  CANivore: { label: 'CTRE CANivore', category: 'Control & Communication', protocol: 'USB to CAN FD', details: 'Secondary CAN FD Bus Adapter', cost: 299.99 },
+  CANHub: { label: 'WCP CAN Bus Hub', category: 'Control & Communication', protocol: 'CAN Splitter', details: 'CAN Bus Distribution Board', cost: 25.00 },
+
+  KrakenX60: { label: 'Kraken X60 Motor', category: 'Motors & Controllers', protocol: 'CAN / CAN FD', details: 'Brushless Motor + Integrated TalonFX', cost: 217.99 },
+  KrakenX44: { label: 'Kraken X44 Motor', category: 'Motors & Controllers', protocol: 'CAN / CAN FD', details: 'Compact Brushless + Integrated TalonFX', cost: 217.99 },
+  Falcon500: { label: 'Falcon 500 Motor', category: 'Motors & Controllers', protocol: 'CAN / CAN FD', details: 'Brushless Motor + Integrated TalonFX', cost: 180.00 },
+  SparkMaxNEO: { label: 'NEO + SPARK MAX', category: 'Motors & Controllers', protocol: 'CAN / PWM', details: 'Brushless Motor and Controller', cost: 125.00 },
+  NEOVortex: { label: 'NEO Vortex + SPARK Flex', category: 'Motors & Controllers', protocol: 'CAN / PWM', details: 'Brushless Motor and Controller', cost: 180.00 },
+  NEO550: { label: 'NEO 550 + SPARK MAX', category: 'Motors & Controllers', protocol: 'CAN / PWM', details: 'Compact Brushless and Controller', cost: 45.00 },
+  BrushedController: { label: 'Brushed Motor + SPARK MAX', category: 'Motors & Controllers', protocol: 'CAN / PWM', details: 'Brushed Motor Controller', cost: 50.00 },
+  PWMServo: { label: 'PWM Servo Motor', category: 'Motors & Controllers', protocol: 'PWM Signal', details: 'Standard Servo', cost: 20.00 },
+
+  PneumaticsHub: { label: 'REV Pneumatic Hub', category: 'Pneumatics', protocol: 'CAN / Solenoid', details: '16 Solenoid Channels', cost: 120.00 },
+  Compressor: { label: 'Pneumatic Compressor', category: 'Pneumatics', protocol: 'Pneumatic Hub Output', details: 'Air Compressor', cost: 110.00 },
+  PressureSwitch: { label: 'Pneumatic Pressure Switch', category: 'Pneumatics', protocol: 'Digital Switch', details: '120 PSI Auto Cutoff Switch', cost: 15.00 },
+  SolenoidValve: { label: 'Solenoid Valve', category: 'Pneumatics', protocol: 'Solenoid Channel', details: 'Pneumatic Valve', cost: 45.00 },
+
+  CANcoder: { label: 'CTRE CANcoder', category: 'Sensors', protocol: 'CAN / CAN FD', details: 'Absolute Encoder', cost: 65.00 },
+  ThroughBore: { label: 'REV Through Bore Encoder', category: 'Sensors', protocol: 'DIO Duty Cycle', details: 'Absolute / Quadrature Encoder', cost: 45.00 },
+  Pigeon2: { label: 'Pigeon 2.0 IMU', category: 'Sensors', protocol: 'CAN / CAN FD', details: '9-Axis IMU', cost: 199.99 },
+  NavX2: { label: 'navX2-MXP Gyro', category: 'Sensors', protocol: 'MXP (SPI / I2C)', details: 'Plugs Into roboRIO MXP Port', cost: 100.00 },
+  LimitSwitch: { label: 'Limit Switch', category: 'Sensors', protocol: 'DIO Contact', details: 'Physical Hardstop Sensor', cost: 10.00 },
+  BeamBreak: { label: 'Beam-Break Sensor', category: 'Sensors', protocol: 'DIO Optical', details: 'Game Piece Sensor', cost: 15.00 },
+  TimeOfFlight: { label: 'LaserCAN ToF Sensor', category: 'Sensors', protocol: 'CAN', details: 'Laser Distance Measurement', cost: 35.00 },
+  ColorSensor: { label: 'REV Color Sensor V3', category: 'Sensors', protocol: 'I2C', details: 'Color & Proximity Sensor', cost: 20.00 },
+
+  Limelight: { label: 'Limelight 3/3G/4', category: 'Vision & Coprocessors', protocol: 'Ethernet / NetworkTables', details: 'Smart Vision Camera', cost: 400.00 },
+  PhotonVision: { label: 'USB Camera (PhotonVision)', category: 'Vision & Coprocessors', protocol: 'USB', details: 'Runs on a Coprocessor', cost: 120.00 },
+  Coprocessor: { label: 'Linux Coprocessor', category: 'Vision & Coprocessors', protocol: 'USB / Ethernet', details: 'Orange Pi / Jetson', cost: 120.00 },
 };
+
+const CAN_ID_DEVICES = ['KrakenX60', 'KrakenX44', 'Falcon500', 'SparkMaxNEO', 'NEOVortex', 'NEO550', 'BrushedController', 'PneumaticsHub', 'CANcoder', 'Pigeon2', 'TimeOfFlight'];
+const DIO_DEVICES = ['LimitSwitch', 'BeamBreak', 'ThroughBore'];
+
+function lowestUnused(used: (number | undefined)[], first: number, last: number): number | undefined {
+  for (let value = first; value <= last; value++) {
+    if (!used.includes(value)) return value;
+  }
+  return undefined;
+}
 
 let deviceCounter = 1;
 
@@ -310,14 +340,11 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
         }
       }
 
-      if (radioHandle === 'eth-aux') {
-        const auxAlreadyOccupied = edges.some(
-          (e) => (e.sourceHandle === 'eth-aux' && e.source === (isRadioSource ? sourceNode.id : targetNode.id)) ||
-                 (e.targetHandle === 'eth-aux' && e.target === (isRadioSource ? sourceNode.id : targetNode.id))
-        );
+      if (radioHandle === 'eth-aux' || radioHandle === 'eth-aux2') {
+        const auxAlreadyOccupied = edges.some((e) => e.source === sourceNode?.id && e.sourceHandle === radioHandle);
 
         if (auxAlreadyOccupied) {
-          alert("Radio AUX Port Occupied! The AUX port only supports 1 downstream connection.");
+          alert("Radio AUX Port Occupied! Each AUX port only supports 1 downstream connection.");
           return;
         }
       }
@@ -432,13 +459,14 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
   addDevice: (type: string) => {
     const config = FRC_DEVICE_DEFAULTS[type] || {
       label: type,
-      category: 'Actuators & Drive',
+      category: 'Motors & Controllers' as DeviceCategory,
       protocol: 'CAN Bus',
       details: 'FRC Component',
     };
 
     const id = `${type.toLowerCase()}${deviceCounter++}`;
-    const nodeCount = get().nodes.length;
+    const nodes = get().nodes;
+    const nodeCount = nodes.length;
     
     const position = {
       x: 100 + (nodeCount % 3) * 350,
@@ -457,9 +485,9 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
         category: config.category,
         protocol: config.protocol,
         details: config.details,
-        canId: !['PDH', 'roboRIO', 'Battery12V', 'MainBreaker120A', 'RadioSwitch', 'RSL', 'PWMServo', 'Compressor', 'LimitSwitch', 'BeamBreak', 'PressureSwitch', 'BuckConverter'].includes(type) ? (nodeCount % 62) + 1 : undefined,
-        dioPort: ['LimitSwitch', 'BeamBreak', 'ThroughBore'].includes(type) ? nodeCount % 10 : undefined,
-        pwmPort: type === 'PWMServo' ? nodeCount % 10 : undefined,
+        canId: CAN_ID_DEVICES.includes(type) ? lowestUnused(nodes.map((n) => n.data.canId), 1, 62) : undefined,
+        dioPort: DIO_DEVICES.includes(type) ? lowestUnused(nodes.map((n) => n.data.dioPort), 0, 9) : undefined,
+        pwmPort: type === 'PWMServo' ? lowestUnused(nodes.map((n) => n.data.pwmPort), 0, 9) : undefined,
       },
     };
 

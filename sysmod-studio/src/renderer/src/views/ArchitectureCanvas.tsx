@@ -1,75 +1,63 @@
-import React, { useMemo, useState } from 'react';
-import { ReactFlow, Background, Controls, NodeTypes, Edge } from '@xyflow/react';
-import { useRobotStore } from './store/useRobotStore';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ReactFlow, Background, Controls, Node, NodeTypes, Edge, ReactFlowInstance } from '@xyflow/react';
+import { useRobotStore, DEVICE_CATEGORIES, FRC_DEVICE_DEFAULTS, FRCNodeData } from './store/useRobotStore';
 import { ControlHubNode } from './components/ControlHubNode';
 import { StandardNode } from './components/StandardNode';
 import { CodeViewerModal } from './components/CodeViewerModal';
-import { SystemVerificationModal } from './components/SystemVerificationModal';
+import { AadlPanel } from './components/AadlPanel';
 import { PdfPreviewModal } from './components/PdfPreviewModal';
 import { generatePythonCode, generateJavaCode, generateAadlCode } from './utils/codeGenerators';
-import { verifySystemProperties, VerificationReport } from './utils/systemVerifier';
 import { generateArchitectureReportHtml } from './utils/pdfGenerator';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Cpu, Plus, Layers, Trash2, Eye, Zap, Camera, Server, ArrowLeft, Save, Gauge, Wind, Radio, Activity, Battery, ShieldCheck, FileCode, Wifi, Lightbulb, Sliders, ShieldAlert, FileText, LucideIcon 
+  Cpu, Plus, Layers, Trash2, Eye, Zap, Camera, Server, ArrowLeft, Save, Gauge, Wind, Radio, Activity, Battery, ShieldCheck, FileCode, Wifi, Lightbulb, Sliders, ShieldAlert, FileText, ChevronDown, LucideIcon 
 } from 'lucide-react';
 import '@xyflow/react/dist/style.css';
 
 const proOptions = { hideAttribution: true };
 
-export interface HardwareItemConfig {
-  id: string;
-  label: string;
-  defaultCost: number;
-  category: 'Control & Power' | 'Actuators & Drive' | 'Sensors & Vision' | 'Coprocessors';
+interface HardwareStyle {
   icon: LucideIcon;
   borderColor: string;
   iconColor: string;
 }
 
-export const FRC_HARDWARE_CATALOG: HardwareItemConfig[] = [
-  // Control & Mandatory Power
-  { id: 'Battery12V', label: '12V FRC Battery', defaultCost: 50.00, category: 'Control & Power', icon: Battery, borderColor: 'border-red-500/40', iconColor: 'text-red-500' },
-  { id: 'MainBreaker120A', label: '120A Main Breaker', defaultCost: 35.00, category: 'Control & Power', icon: ShieldAlert, borderColor: 'border-red-600/40', iconColor: 'text-red-500' },
-  { id: 'PDH', label: 'REV PDH', defaultCost: 240.00, category: 'Control & Power', icon: Zap, borderColor: 'border-amber-500/40', iconColor: 'text-amber-500' },
-  { id: 'roboRIO', label: 'roboRIO 2.0', defaultCost: 450.00, category: 'Control & Power', icon: Cpu, borderColor: 'border-indigo-500/40', iconColor: 'text-indigo-400' },
-  { id: 'RSL', label: 'Robot Signal Light (RSL)', defaultCost: 35.00, category: 'Control & Power', icon: Lightbulb, borderColor: 'border-yellow-500/40', iconColor: 'text-yellow-400' },
-  { id: 'RadioSwitch', label: 'VH-109 Radio / Eth Switch', defaultCost: 150.00, category: 'Control & Power', icon: Wifi, borderColor: 'border-emerald-500/40', iconColor: 'text-emerald-400' },
-  { id: 'PneumaticsHub', label: 'Pneumatics Hub', defaultCost: 120.00, category: 'Control & Power', icon: Wind, borderColor: 'border-sky-500/40', iconColor: 'text-sky-400' },
-  { id: 'PressureSwitch', label: 'Pneumatic Pressure Switch', defaultCost: 15.00, category: 'Control & Power', icon: Wind, borderColor: 'border-sky-500/40', iconColor: 'text-sky-400' },
-  { id: 'VRM_MPM', label: 'Mini Power Module / VRM', defaultCost: 45.00, category: 'Control & Power', icon: Zap, borderColor: 'border-amber-500/40', iconColor: 'text-amber-400' },
-  { id: 'BuckConverter', label: '5V/12V Buck Converter', defaultCost: 15.00, category: 'Control & Power', icon: Sliders, borderColor: 'border-sky-500/40', iconColor: 'text-sky-400' },
-  
-  // CAN Bus Expansion
-  { id: 'CANivore', label: 'CTRE CANivore (CAN FD)', defaultCost: 300.00, category: 'Control & Power', icon: Radio, borderColor: 'border-amber-500/40', iconColor: 'text-amber-400' },
-  { id: 'CANHub', label: 'WCP CAN Bus Hub', defaultCost: 25.00, category: 'Control & Power', icon: Radio, borderColor: 'border-amber-500/40', iconColor: 'text-amber-400' },
-
-  // Actuators & Drive
-  { id: 'KrakenX60', label: 'Kraken X60 Motor', defaultCost: 180.00, category: 'Actuators & Drive', icon: Activity, borderColor: 'border-emerald-500/40', iconColor: 'text-emerald-400' },
-  { id: 'Falcon500', label: 'Falcon 500 Motor', defaultCost: 180.00, category: 'Actuators & Drive', icon: Activity, borderColor: 'border-emerald-500/40', iconColor: 'text-emerald-400' },
-  { id: 'SparkMaxNEO', label: 'NEO + SPARK Max', defaultCost: 125.00, category: 'Actuators & Drive', icon: Zap, borderColor: 'border-orange-500/40', iconColor: 'text-orange-400' },
-  { id: 'NEOVortex', label: 'NEO Vortex + SPARK Flex', defaultCost: 180.00, category: 'Actuators & Drive', icon: Zap, borderColor: 'border-orange-500/40', iconColor: 'text-orange-400' },
-  { id: 'NEO550', label: 'NEO 550 Motor', defaultCost: 45.00, category: 'Actuators & Drive', icon: Zap, borderColor: 'border-orange-500/40', iconColor: 'text-orange-400' },
-  { id: 'BrushedController', label: 'Brushed Motor Controller', defaultCost: 50.00, category: 'Actuators & Drive', icon: Zap, borderColor: 'border-orange-500/40', iconColor: 'text-orange-400' },
-  { id: 'PWMServo', label: 'PWM Servo Motor', defaultCost: 20.00, category: 'Actuators & Drive', icon: Zap, borderColor: 'border-purple-500/40', iconColor: 'text-purple-400' },
-  { id: 'Compressor', label: 'Pneumatic Compressor', defaultCost: 110.00, category: 'Actuators & Drive', icon: Wind, borderColor: 'border-sky-500/40', iconColor: 'text-sky-400' },
-  { id: 'SolenoidValve', label: 'Solenoid Valve', defaultCost: 45.00, category: 'Actuators & Drive', icon: Wind, borderColor: 'border-cyan-500/40', iconColor: 'text-cyan-400' },
-  
-  // Sensors & Vision
-  { id: 'Limelight', label: 'Limelight 3/3G', defaultCost: 400.00, category: 'Sensors & Vision', icon: Camera, borderColor: 'border-lime-500/40', iconColor: 'text-lime-400' },
-  { id: 'PhotonVision', label: 'PhotonVision Camera', defaultCost: 120.00, category: 'Sensors & Vision', icon: Camera, borderColor: 'border-lime-500/40', iconColor: 'text-lime-400' },
-  { id: 'CANcoder', label: 'CTRE CANcoder', defaultCost: 65.00, category: 'Sensors & Vision', icon: Gauge, borderColor: 'border-purple-500/40', iconColor: 'text-purple-400' },
-  { id: 'ThroughBore', label: 'REV Through Bore', defaultCost: 45.00, category: 'Sensors & Vision', icon: Gauge, borderColor: 'border-purple-500/40', iconColor: 'text-purple-400' },
-  { id: 'Pigeon2', label: 'Pigeon 2.0 IMU', defaultCost: 199.00, category: 'Sensors & Vision', icon: Radio, borderColor: 'border-rose-500/40', iconColor: 'text-rose-400' },
-  { id: 'NavX2', label: 'navX2-MXP Gyro', defaultCost: 100.00, category: 'Sensors & Vision', icon: Radio, borderColor: 'border-rose-500/40', iconColor: 'text-rose-400' },
-  { id: 'LimitSwitch', label: 'Limit Switch', defaultCost: 10.00, category: 'Sensors & Vision', icon: Eye, borderColor: 'border-purple-500/40', iconColor: 'text-purple-400' },
-  { id: 'BeamBreak', label: 'Beam-Break Sensor', defaultCost: 15.00, category: 'Sensors & Vision', icon: Eye, borderColor: 'border-purple-500/40', iconColor: 'text-purple-400' },
-  { id: 'TimeOfFlight', label: 'LaserCAN / ToF Sensor', defaultCost: 35.00, category: 'Sensors & Vision', icon: Gauge, borderColor: 'border-purple-500/40', iconColor: 'text-purple-400' },
-  { id: 'ColorSensor', label: 'REV Color Sensor V3', defaultCost: 20.00, category: 'Sensors & Vision', icon: Eye, borderColor: 'border-purple-500/40', iconColor: 'text-purple-400' },
-  
-  // Coprocessors
-  { id: 'Coprocessor', label: 'Orange Pi / Jetson', defaultCost: 120.00, category: 'Coprocessors', icon: Server, borderColor: 'border-indigo-500/40', iconColor: 'text-indigo-400' }
-];
+const HARDWARE_STYLES: Record<string, HardwareStyle> = {
+  Battery12V: { icon: Battery, borderColor: 'border-red-500/40', iconColor: 'text-red-500' },
+  MainBreaker120A: { icon: ShieldAlert, borderColor: 'border-red-600/40', iconColor: 'text-red-500' },
+  PDH: { icon: Zap, borderColor: 'border-amber-500/40', iconColor: 'text-amber-500' },
+  VRM: { icon: Zap, borderColor: 'border-amber-500/40', iconColor: 'text-amber-400' },
+  MPM: { icon: Zap, borderColor: 'border-amber-500/40', iconColor: 'text-amber-400' },
+  BuckConverter: { icon: Sliders, borderColor: 'border-sky-500/40', iconColor: 'text-sky-400' },
+  roboRIO: { icon: Cpu, borderColor: 'border-indigo-500/40', iconColor: 'text-indigo-400' },
+  RadioSwitch: { icon: Wifi, borderColor: 'border-emerald-500/40', iconColor: 'text-emerald-400' },
+  RSL: { icon: Lightbulb, borderColor: 'border-yellow-500/40', iconColor: 'text-yellow-400' },
+  CANivore: { icon: Radio, borderColor: 'border-amber-500/40', iconColor: 'text-amber-400' },
+  CANHub: { icon: Radio, borderColor: 'border-amber-500/40', iconColor: 'text-amber-400' },
+  KrakenX60: { icon: Activity, borderColor: 'border-emerald-500/40', iconColor: 'text-emerald-400' },
+  KrakenX44: { icon: Activity, borderColor: 'border-emerald-500/40', iconColor: 'text-emerald-400' },
+  Falcon500: { icon: Activity, borderColor: 'border-emerald-500/40', iconColor: 'text-emerald-400' },
+  SparkMaxNEO: { icon: Zap, borderColor: 'border-orange-500/40', iconColor: 'text-orange-400' },
+  NEOVortex: { icon: Zap, borderColor: 'border-orange-500/40', iconColor: 'text-orange-400' },
+  NEO550: { icon: Zap, borderColor: 'border-orange-500/40', iconColor: 'text-orange-400' },
+  BrushedController: { icon: Zap, borderColor: 'border-orange-500/40', iconColor: 'text-orange-400' },
+  PWMServo: { icon: Zap, borderColor: 'border-purple-500/40', iconColor: 'text-purple-400' },
+  PneumaticsHub: { icon: Wind, borderColor: 'border-sky-500/40', iconColor: 'text-sky-400' },
+  Compressor: { icon: Wind, borderColor: 'border-sky-500/40', iconColor: 'text-sky-400' },
+  PressureSwitch: { icon: Wind, borderColor: 'border-sky-500/40', iconColor: 'text-sky-400' },
+  SolenoidValve: { icon: Wind, borderColor: 'border-cyan-500/40', iconColor: 'text-cyan-400' },
+  CANcoder: { icon: Gauge, borderColor: 'border-purple-500/40', iconColor: 'text-purple-400' },
+  ThroughBore: { icon: Gauge, borderColor: 'border-purple-500/40', iconColor: 'text-purple-400' },
+  Pigeon2: { icon: Radio, borderColor: 'border-rose-500/40', iconColor: 'text-rose-400' },
+  NavX2: { icon: Radio, borderColor: 'border-rose-500/40', iconColor: 'text-rose-400' },
+  LimitSwitch: { icon: Eye, borderColor: 'border-purple-500/40', iconColor: 'text-purple-400' },
+  BeamBreak: { icon: Eye, borderColor: 'border-purple-500/40', iconColor: 'text-purple-400' },
+  TimeOfFlight: { icon: Gauge, borderColor: 'border-purple-500/40', iconColor: 'text-purple-400' },
+  ColorSensor: { icon: Eye, borderColor: 'border-purple-500/40', iconColor: 'text-purple-400' },
+  Limelight: { icon: Camera, borderColor: 'border-lime-500/40', iconColor: 'text-lime-400' },
+  PhotonVision: { icon: Camera, borderColor: 'border-lime-500/40', iconColor: 'text-lime-400' },
+  Coprocessor: { icon: Server, borderColor: 'border-indigo-500/40', iconColor: 'text-indigo-400' },
+};
 
 export default function App(): React.JSX.Element {
   const navigate = useNavigate();
@@ -90,8 +78,20 @@ export default function App(): React.JSX.Element {
   const [modalJava, setModalJava] = useState('');
   const [modalPython, setModalPython] = useState('');
 
-  const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
-  const [verifyReport, setVerifyReport] = useState<VerificationReport>({ passed: true, score: 100, issues: [] });
+  const [isAadlPanelOpen, setIsAadlPanelOpen] = useState(false);
+  const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<Node<FRCNodeData>, Edge> | null>(null);
+  const canvasRef = useRef<HTMLElement>(null);
+
+  // Opening the panel narrows the canvas, so refit to keep the whole diagram in view
+  useEffect(() => {
+    if (!flowInstance || !canvasRef.current) return;
+    const observer = new ResizeObserver(() => {
+      observer.disconnect();
+      flowInstance.fitView({ duration: 200 });
+    });
+    observer.observe(canvasRef.current);
+    return () => observer.disconnect();
+  }, [isAadlPanelOpen, flowInstance]);
 
   // PDF Modal State
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
@@ -107,12 +107,6 @@ export default function App(): React.JSX.Element {
     setModalJava(generateJavaCode(nodes, edges));
     setModalPython(generatePythonCode(nodes, edges));
     setIsCodeModalOpen(true);
-  };
-
-  const handleRunVerification = (): void => {
-    const report = verifySystemProperties(nodes, edges);
-    setVerifyReport(report);
-    setIsVerifyModalOpen(true);
   };
 
   const handleGeneratePDF = (): void => {
@@ -172,31 +166,42 @@ export default function App(): React.JSX.Element {
           </div>
 
           <button
-            onClick={handleRunVerification}
+            onClick={() => setIsAadlPanelOpen((isOpen) => !isOpen)}
             className="w-full py-2.5 px-3 rounded flex items-center justify-center gap-2 text-xs font-mono bg-emerald-950/40 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-900/60 transition font-bold"
           >
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            Verify FRC System Rules
+            {isAadlPanelOpen ? 'Hide AADL & Verification' : 'Convert to AADL & Verify'}
           </button>
 
           <div className="space-y-3 border-t border-slate-800/80 pt-3">
             <h2 className="text-xs font-mono uppercase tracking-wider text-slate-400 px-1">FRC Component Palette</h2>
-            {FRC_HARDWARE_CATALOG.map((item) => {
-              const ItemIcon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => addDevice(item.id)}
-                  className={`w-full flex items-center justify-between p-2 rounded bg-slate-950 hover:bg-slate-800 border ${item.borderColor} text-left transition group`}
-                >
-                  <div className="flex items-center gap-2">
-                    <ItemIcon className={`w-3.5 h-3.5 ${item.iconColor}`} />
-                    <span className="text-xs font-mono text-slate-300">{item.label}</span>
-                  </div>
-                  <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-400 transition" />
-                </button>
-              );
-            })}
+            {DEVICE_CATEGORIES.map((category) => (
+              <details key={category} open className="group/section space-y-1.5">
+                <summary className="flex items-center justify-between px-1 py-0.5 cursor-pointer select-none text-[11px] font-mono font-bold text-indigo-300">
+                  {category}
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-500 transition group-open/section:rotate-180" />
+                </summary>
+                {Object.entries(FRC_DEVICE_DEFAULTS)
+                  .filter(([, device]) => device.category === category)
+                  .map(([type, device]) => {
+                    const style = HARDWARE_STYLES[type];
+                    const ItemIcon = style.icon;
+                    return (
+                      <button
+                        key={type}
+                        onClick={() => addDevice(type)}
+                        className={`w-full flex items-center justify-between p-2 rounded bg-slate-950 hover:bg-slate-800 border ${style.borderColor} text-left transition group`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <ItemIcon className={`w-3.5 h-3.5 ${style.iconColor}`} />
+                          <span className="text-xs font-mono text-slate-300">{device.label}</span>
+                        </div>
+                        <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-400 transition" />
+                      </button>
+                    );
+                  })}
+              </details>
+            ))}
           </div>
         </div>
 
@@ -213,8 +218,8 @@ export default function App(): React.JSX.Element {
         </div>
       </aside>
 
-      <main className="flex-1 h-full relative bg-slate-950">
-        <div className="absolute top-4 right-4 z-20 bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-xl p-3 shadow-2xl flex items-center gap-4 text-xs font-mono">
+      <main ref={canvasRef} className="flex-1 min-w-0 h-full relative bg-slate-950">
+        <div className="absolute top-4 right-4 z-20 max-w-[calc(100%-2rem)] bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-xl p-3 shadow-2xl flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs font-mono">
           <span className="text-slate-400 font-bold uppercase text-[10px] tracking-wider border-r border-slate-800 pr-3">
             Wiring Standards:
           </span>
@@ -247,8 +252,10 @@ export default function App(): React.JSX.Element {
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onEdgeClick={handleEdgeClick}
+          onInit={setFlowInstance}
           nodeTypes={nodeTypes}
           fitView
+          minZoom={0.2}
           proOptions={proOptions}
         >
           <Background color="#334155" gap={16} size={1} />
@@ -256,18 +263,16 @@ export default function App(): React.JSX.Element {
         </ReactFlow>
       </main>
 
+      {isAadlPanelOpen && (
+        <AadlPanel nodes={nodes} edges={edges} onClose={() => setIsAadlPanelOpen(false)} />
+      )}
+
       <CodeViewerModal
         isOpen={isCodeModalOpen}
         onClose={() => setIsCodeModalOpen(false)}
         aadlCode={modalAadl}
         javaCode={modalJava}
         pythonCode={modalPython}
-      />
-
-      <SystemVerificationModal
-        isOpen={isVerifyModalOpen}
-        onClose={() => setIsVerifyModalOpen(false)}
-        report={verifyReport}
       />
 
       {/* Embedded In-App PDF Preview Modal */}
