@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-prove:
+    name: Build and prove (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # The bundled Java runtime is platform specific, so prove on each OS we ship
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+
+    defaults:
+      run:
+        working-directory: ./sysmod-studio
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: './sysmod-studio/package-lock.json'
+
+      # JKind's Gradle 7.2 build only runs on JDK 11. The same JDK makes the bundled runtime,
+      # so students never install Java.
+      - name: Setup JDK 11
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '11'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Compile JKind and bundle a Java runtime
+        run: npm run build:jkind -- --rebuild
+
+      - name: Prove the FRC standard contracts
+        run: npm run test:proofs
+
+      - name: Build the app
+        run: npx electron-vite build

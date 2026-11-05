@@ -47,6 +47,8 @@ interface RobotStore {
   clearWorkspace: () => void;
   setNodes: (nodes: Node<FRCNodeData>[]) => void;
   setEdges: (edges: Edge[]) => void;
+  customContracts: Record<string, string>;
+  setCustomContract: (scope: string, text: string) => void;
   getPdhAllocations: () => {
     highMap: Map<number, { nodeId: string; deviceLabel: string }>;
     lowMap: Map<number, { nodeId: string; deviceLabel: string }>;
@@ -506,4 +508,6 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
   clearWorkspace: () => set({ nodes: [], edges: [] }),
   setNodes: (nodes) => set({ nodes }),
   setEdges: (edges) => set({ edges }),
+  customContracts: {},
+  setCustomContract: (scope, text) => set({ customContracts: { ...get().customContracts, [scope]: text } }),
 }));

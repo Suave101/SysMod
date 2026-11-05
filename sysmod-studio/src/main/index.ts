@@ -1,6 +1,9 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import { registerJKindHandlers } from './jkind';
+
+registerJKindHandlers();
 
 // Handles writing the JSON file to the user's local AppData directory
 ipcMain.handle('save-local-json', async (_event, data) => {

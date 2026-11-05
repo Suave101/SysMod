@@ -37,6 +37,27 @@ export const beforeMonacoMount: BeforeMount = (monaco) => {
     });
   }
 
+  if (!monaco.languages.getLanguages().some((l) => l.id === 'agree')) {
+    monaco.languages.register({ id: 'agree', aliases: ['AGREE'] });
+
+    monaco.languages.setMonarchTokensProvider('agree', {
+      defaultToken: '',
+      ignoreCase: true,
+      tokenizer: {
+        root: [
+          [/--.*$/, 'comment'],
+          [/"[^"]*"/, 'string'],
+          [/\b(?:assume|guarantee|lemma|assert|eq|const|pre|prev|if|then|else|and|or|xor|not|div|mod|true|false|bool|int|real)\b/, 'keyword'],
+          [/[0-9]+(?:\.[0-9]+)?(?:[Ee][+-]?[0-9]+)?/, 'number'],
+          [/[a-zA-Z_][a-zA-Z0-9_.]*/, 'identifier'],
+          [/<=>|->|=>|<>|<=|>=|[=<>+\-*/:]/, 'operator'],
+          [/[;,()]/, 'delimiter'],
+          [/\s+/, 'white'],
+        ],
+      },
+    });
+  }
+
   monaco.editor.defineTheme('sysmod-dark', {
     base: 'vs-dark',
     inherit: true,
