@@ -1,5 +1,6 @@
 export interface ISysmodAPI {
   saveJavaFile: (code: string) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+  runJKind: (lustre: string, timeoutSec?: number) => Promise<{ success: boolean; xml?: string; error?: string }>;
 }
 
 declare global {

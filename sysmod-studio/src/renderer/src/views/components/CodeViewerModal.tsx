@@ -12,7 +12,7 @@ interface CodeViewerModalProps {
   pythonCode?: string;
 }
 
-const beforeMonacoMount: BeforeMount = (monaco) => {
+export const beforeMonacoMount: BeforeMount = (monaco) => {
   if (!monaco.languages.getLanguages().some((l) => l.id === 'aadl')) {
     monaco.languages.register({ id: 'aadl', extensions: ['.aadl'], aliases: ['AADL'] });
 
@@ -31,6 +31,27 @@ const beforeMonacoMount: BeforeMount = (monaco) => {
           [/[a-zA-Z_][a-zA-Z0-9_.]*/, 'identifier'],
           [/->|<->|::|=>|:/, 'operator'],
           [/[;,]/, 'delimiter'],
+          [/\s+/, 'white'],
+        ],
+      },
+    });
+  }
+
+  if (!monaco.languages.getLanguages().some((l) => l.id === 'agree')) {
+    monaco.languages.register({ id: 'agree', aliases: ['AGREE'] });
+
+    monaco.languages.setMonarchTokensProvider('agree', {
+      defaultToken: '',
+      ignoreCase: true,
+      tokenizer: {
+        root: [
+          [/--.*$/, 'comment'],
+          [/"[^"]*"/, 'string'],
+          [/\b(?:assume|guarantee|lemma|assert|eq|const|pre|prev|if|then|else|and|or|xor|not|div|mod|true|false|bool|int|real)\b/, 'keyword'],
+          [/[0-9]+(?:\.[0-9]+)?(?:[Ee][+-]?[0-9]+)?/, 'number'],
+          [/[a-zA-Z_][a-zA-Z0-9_.]*/, 'identifier'],
+          [/<=>|->|=>|<>|<=|>=|[=<>+\-*/:]/, 'operator'],
+          [/[;,()]/, 'delimiter'],
           [/\s+/, 'white'],
         ],
       },
@@ -62,7 +83,7 @@ const beforeMonacoMount: BeforeMount = (monaco) => {
   });
 };
 
-const EDITOR_OPTIONS = {
+export const EDITOR_OPTIONS = {
   readOnly: true,
   fontSize: 13,
   fontFamily: '"JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, "Courier New", monospace',

@@ -1,8 +1,9 @@
 import { Node, Edge } from '@xyflow/react';
 import { FRCNodeData } from '../store/useRobotStore';
 import { generatePythonCode } from './pythonGenerator';
+import { generateAadlCode } from './aadlGenerator';
 
-export { generatePythonCode };
+export { generatePythonCode, generateAadlCode };
 
 /**
  * Generates FRC WPILib Java (Robot.java / RobotContainer.java)
@@ -86,31 +87,4 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
   code += `}\n`;
 
   return code;
-}
-
-/**
- * Generates FRC Architectural AADL Specification
- */
-export function generateAadlCode(nodes: Node<FRCNodeData>[], edges: Edge[]): string {
-  let aadl = `package FRC_Robot_Architecture\npublic\n`;
-  aadl += `  with Base_Types;\n\n`;
-  aadl += `  system FRC_Robot\n  end FRC_Robot;\n\n`;
-  aadl += `  system implementation FRC_Robot.impl\n`;
-  aadl += `    subcomponents\n`;
-
-  nodes.forEach((n) => {
-    const type = n.data?.deviceType || 'Component';
-    aadl += `      ${n.id}: device ${type};\n`;
-  });
-
-  aadl += `\n    connections\n`;
-
-  edges.forEach((e, idx) => {
-    aadl += `      conn_${idx}: port ${e.source}.${e.sourceHandle || 'out'} -> ${e.target}.${e.targetHandle || 'in'};\n`;
-  });
-
-  aadl += `  end FRC_Robot.impl;\n`;
-  aadl += `end FRC_Robot_Architecture;\n`;
-
-  return aadl;
 }

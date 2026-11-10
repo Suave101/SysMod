@@ -1,123 +1,129 @@
-import React, { useMemo, useState } from 'react';
-import { ReactFlow, Background, Controls, NodeTypes, Edge } from '@xyflow/react';
-import { useRobotStore } from './store/useRobotStore';
-import { ControlHubNode } from './components/ControlHubNode';
-import { StandardNode } from './components/StandardNode';
-import { CodeViewerModal } from './components/CodeViewerModal';
-import { SystemVerificationModal } from './components/SystemVerificationModal';
-import { PdfPreviewModal } from './components/PdfPreviewModal';
-import { generatePythonCode, generateJavaCode, generateAadlCode } from './utils/codeGenerators';
-import { verifySystemProperties, VerificationReport } from './utils/systemVerifier';
-import { generateArchitectureReportHtml } from './utils/pdfGenerator';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Cpu, Plus, Layers, Trash2, Eye, Zap, Camera, Server, ArrowLeft, Save, Gauge, Wind, Radio, Activity, Battery, ShieldCheck, FileCode, Wifi, Lightbulb, Sliders, ShieldAlert, FileText, LucideIcon 
-} from 'lucide-react';
-import '@xyflow/react/dist/style.css';
+import { Award, FileText, Sigma, Workflow, X } from 'lucide-react';
+import { FRC_DEVICE_DEFAULTS } from './store/useRobotStore';
+import { CodeViewerModal } from './components/CodeViewerModal';
+import { PdfPreviewModal } from './components/PdfPreviewModal';
+import { generatePythonCode, generateJavaCode } from './utils/codeGenerators';
+import { generateArchitectureReportHtml } from './utils/pdfGenerator';
+import { ActivityBar, SideView } from './workbench/ActivityBar';
+import { ComponentsView, ContractsView, ProjectView } from './workbench/SideBarViews';
+import { AadlEditor, ContractEditor, DiagramEditor, downloadAadl } from './workbench/Editors';
+import { BottomPanel, collectProblems, PanelView, StatusBar } from './workbench/BottomPanel';
+import { scopeLabel, useWorkbenchModel } from './workbench/useWorkbenchModel';
+import { JudgeReport } from './workbench/JudgeReport';
 
-const proOptions = { hideAttribution: true };
+type EditorTab = { id: 'diagram' } | { id: 'aadl' } | { id: 'judges' } | { id: `contract:${string}`; scope: string };
 
-export interface HardwareItemConfig {
-  id: string;
-  label: string;
-  defaultCost: number;
-  category: 'Control & Power' | 'Actuators & Drive' | 'Sensors & Vision' | 'Coprocessors';
-  icon: LucideIcon;
-  borderColor: string;
-  iconColor: string;
+const DIAGRAM_TAB: EditorTab = { id: 'diagram' };
+const SIDE_BAR_LIMITS = { min: 200, max: 520, initial: 288 };
+const PANEL_LIMITS = { min: 120, max: 600, initial: 220 };
+
+/** Tracks a pointer drag on a sash and reports the new size, clamped to limits */
+function useSash(initial: number, limits: { min: number; max: number }, axis: 'x' | 'y', invert = false) {
+  const [size, setSize] = useState(initial);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const start = useCallback(
+    (event: React.PointerEvent) => {
+      event.preventDefault();
+      const origin = axis === 'x' ? event.clientX : event.clientY;
+      const startSize = size;
+      setIsDragging(true);
+      const move = (e: PointerEvent): void => {
+        const delta = (axis === 'x' ? e.clientX : e.clientY) - origin;
+        setSize(Math.min(limits.max, Math.max(limits.min, startSize + (invert ? -delta : delta))));
+      };
+      const end = (): void => {
+        setIsDragging(false);
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', end);
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', end);
+    },
+    [axis, invert, limits.max, limits.min, size],
+  );
+
+  return { size, start, isDragging };
 }
-
-export const FRC_HARDWARE_CATALOG: HardwareItemConfig[] = [
-  // Control & Mandatory Power
-  { id: 'Battery12V', label: '12V FRC Battery', defaultCost: 50.00, category: 'Control & Power', icon: Battery, borderColor: 'border-red-500/40', iconColor: 'text-red-500' },
-  { id: 'MainBreaker120A', label: '120A Main Breaker', defaultCost: 35.00, category: 'Control & Power', icon: ShieldAlert, borderColor: 'border-red-600/40', iconColor: 'text-red-500' },
-  { id: 'PDH', label: 'REV PDH', defaultCost: 240.00, category: 'Control & Power', icon: Zap, borderColor: 'border-amber-500/40', iconColor: 'text-amber-500' },
-  { id: 'roboRIO', label: 'roboRIO 2.0', defaultCost: 450.00, category: 'Control & Power', icon: Cpu, borderColor: 'border-indigo-500/40', iconColor: 'text-indigo-400' },
-  { id: 'RSL', label: 'Robot Signal Light (RSL)', defaultCost: 35.00, category: 'Control & Power', icon: Lightbulb, borderColor: 'border-yellow-500/40', iconColor: 'text-yellow-400' },
-  { id: 'RadioSwitch', label: 'VH-109 Radio / Eth Switch', defaultCost: 150.00, category: 'Control & Power', icon: Wifi, borderColor: 'border-emerald-500/40', iconColor: 'text-emerald-400' },
-  { id: 'PneumaticsHub', label: 'Pneumatics Hub', defaultCost: 120.00, category: 'Control & Power', icon: Wind, borderColor: 'border-sky-500/40', iconColor: 'text-sky-400' },
-  { id: 'PressureSwitch', label: 'Pneumatic Pressure Switch', defaultCost: 15.00, category: 'Control & Power', icon: Wind, borderColor: 'border-sky-500/40', iconColor: 'text-sky-400' },
-  { id: 'VRM_MPM', label: 'Mini Power Module / VRM', defaultCost: 45.00, category: 'Control & Power', icon: Zap, borderColor: 'border-amber-500/40', iconColor: 'text-amber-400' },
-  { id: 'BuckConverter', label: '5V/12V Buck Converter', defaultCost: 15.00, category: 'Control & Power', icon: Sliders, borderColor: 'border-sky-500/40', iconColor: 'text-sky-400' },
-  
-  // CAN Bus Expansion
-  { id: 'CANivore', label: 'CTRE CANivore (CAN FD)', defaultCost: 300.00, category: 'Control & Power', icon: Radio, borderColor: 'border-amber-500/40', iconColor: 'text-amber-400' },
-  { id: 'CANHub', label: 'WCP CAN Bus Hub', defaultCost: 25.00, category: 'Control & Power', icon: Radio, borderColor: 'border-amber-500/40', iconColor: 'text-amber-400' },
-
-  // Actuators & Drive
-  { id: 'KrakenX60', label: 'Kraken X60 Motor', defaultCost: 180.00, category: 'Actuators & Drive', icon: Activity, borderColor: 'border-emerald-500/40', iconColor: 'text-emerald-400' },
-  { id: 'Falcon500', label: 'Falcon 500 Motor', defaultCost: 180.00, category: 'Actuators & Drive', icon: Activity, borderColor: 'border-emerald-500/40', iconColor: 'text-emerald-400' },
-  { id: 'SparkMaxNEO', label: 'NEO + SPARK Max', defaultCost: 125.00, category: 'Actuators & Drive', icon: Zap, borderColor: 'border-orange-500/40', iconColor: 'text-orange-400' },
-  { id: 'NEOVortex', label: 'NEO Vortex + SPARK Flex', defaultCost: 180.00, category: 'Actuators & Drive', icon: Zap, borderColor: 'border-orange-500/40', iconColor: 'text-orange-400' },
-  { id: 'NEO550', label: 'NEO 550 Motor', defaultCost: 45.00, category: 'Actuators & Drive', icon: Zap, borderColor: 'border-orange-500/40', iconColor: 'text-orange-400' },
-  { id: 'BrushedController', label: 'Brushed Motor Controller', defaultCost: 50.00, category: 'Actuators & Drive', icon: Zap, borderColor: 'border-orange-500/40', iconColor: 'text-orange-400' },
-  { id: 'PWMServo', label: 'PWM Servo Motor', defaultCost: 20.00, category: 'Actuators & Drive', icon: Zap, borderColor: 'border-purple-500/40', iconColor: 'text-purple-400' },
-  { id: 'Compressor', label: 'Pneumatic Compressor', defaultCost: 110.00, category: 'Actuators & Drive', icon: Wind, borderColor: 'border-sky-500/40', iconColor: 'text-sky-400' },
-  { id: 'SolenoidValve', label: 'Solenoid Valve', defaultCost: 45.00, category: 'Actuators & Drive', icon: Wind, borderColor: 'border-cyan-500/40', iconColor: 'text-cyan-400' },
-  
-  // Sensors & Vision
-  { id: 'Limelight', label: 'Limelight 3/3G', defaultCost: 400.00, category: 'Sensors & Vision', icon: Camera, borderColor: 'border-lime-500/40', iconColor: 'text-lime-400' },
-  { id: 'PhotonVision', label: 'PhotonVision Camera', defaultCost: 120.00, category: 'Sensors & Vision', icon: Camera, borderColor: 'border-lime-500/40', iconColor: 'text-lime-400' },
-  { id: 'CANcoder', label: 'CTRE CANcoder', defaultCost: 65.00, category: 'Sensors & Vision', icon: Gauge, borderColor: 'border-purple-500/40', iconColor: 'text-purple-400' },
-  { id: 'ThroughBore', label: 'REV Through Bore', defaultCost: 45.00, category: 'Sensors & Vision', icon: Gauge, borderColor: 'border-purple-500/40', iconColor: 'text-purple-400' },
-  { id: 'Pigeon2', label: 'Pigeon 2.0 IMU', defaultCost: 199.00, category: 'Sensors & Vision', icon: Radio, borderColor: 'border-rose-500/40', iconColor: 'text-rose-400' },
-  { id: 'NavX2', label: 'navX2-MXP Gyro', defaultCost: 100.00, category: 'Sensors & Vision', icon: Radio, borderColor: 'border-rose-500/40', iconColor: 'text-rose-400' },
-  { id: 'LimitSwitch', label: 'Limit Switch', defaultCost: 10.00, category: 'Sensors & Vision', icon: Eye, borderColor: 'border-purple-500/40', iconColor: 'text-purple-400' },
-  { id: 'BeamBreak', label: 'Beam-Break Sensor', defaultCost: 15.00, category: 'Sensors & Vision', icon: Eye, borderColor: 'border-purple-500/40', iconColor: 'text-purple-400' },
-  { id: 'TimeOfFlight', label: 'LaserCAN / ToF Sensor', defaultCost: 35.00, category: 'Sensors & Vision', icon: Gauge, borderColor: 'border-purple-500/40', iconColor: 'text-purple-400' },
-  { id: 'ColorSensor', label: 'REV Color Sensor V3', defaultCost: 20.00, category: 'Sensors & Vision', icon: Eye, borderColor: 'border-purple-500/40', iconColor: 'text-purple-400' },
-  
-  // Coprocessors
-  { id: 'Coprocessor', label: 'Orange Pi / Jetson', defaultCost: 120.00, category: 'Coprocessors', icon: Server, borderColor: 'border-indigo-500/40', iconColor: 'text-indigo-400' }
-];
 
 export default function App(): React.JSX.Element {
   const navigate = useNavigate();
+  const model = useWorkbenchModel();
+  const { nodes, edges } = model;
 
-  const { 
-    nodes, 
-    edges, 
-    onNodesChange, 
-    onEdgesChange, 
-    onConnect, 
-    addDevice, 
-    removeEdge,
-    clearWorkspace
-  } = useRobotStore();
+  const [sideView, setSideView] = useState<SideView>('components');
+  const [isSideBarOpen, setIsSideBarOpen] = useState(true);
+  const [panelView, setPanelView] = useState<PanelView>('problems');
+  const [isPanelOpen, setIsPanelOpen] = useState(true);
+  const [tabs, setTabs] = useState<EditorTab[]>([DIAGRAM_TAB]);
+  const [activeTabId, setActiveTabId] = useState<EditorTab['id']>('diagram');
+  const sideBar = useSash(SIDE_BAR_LIMITS.initial, SIDE_BAR_LIMITS, 'x');
+  const panel = useSash(PANEL_LIMITS.initial, PANEL_LIMITS, 'y', true);
 
   const [isCodeModalOpen, setIsCodeModalOpen] = useState(false);
-  const [modalAadl, setModalAadl] = useState('');
-  const [modalJava, setModalJava] = useState('');
-  const [modalPython, setModalPython] = useState('');
-
-  const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
-  const [verifyReport, setVerifyReport] = useState<VerificationReport>({ passed: true, score: 100, issues: [] });
-
-  // PDF Modal State
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [pdfReportHtml, setPdfReportHtml] = useState('');
 
-  const nodeTypes = useMemo<NodeTypes>(() => ({
-    ControlHub: ControlHubNode,
-    StandardNode: StandardNode,
-  }), []);
+  const openTab = useCallback((tab: EditorTab) => {
+    setTabs((open) => (open.some((t) => t.id === tab.id) ? open : [...open, tab]));
+    setActiveTabId(tab.id);
+  }, []);
 
-  const handleViewCode = (): void => {
-    setModalAadl(generateAadlCode(nodes, edges));
-    setModalJava(generateJavaCode(nodes, edges));
-    setModalPython(generatePythonCode(nodes, edges));
-    setIsCodeModalOpen(true);
+  const openContract = useCallback((scope: string) => openTab({ id: `contract:${scope}`, scope }), [openTab]);
+  const openJudgeReport = useCallback(() => openTab({ id: 'judges' }), [openTab]);
+
+  const closeTab = (id: EditorTab['id']): void => {
+    if (id === 'diagram') return;
+    const index = tabs.findIndex((t) => t.id === id);
+    const remaining = tabs.filter((t) => t.id !== id);
+    setTabs(remaining);
+    if (activeTabId === id) setActiveTabId(remaining[Math.max(0, index - 1)].id);
   };
 
-  const handleRunVerification = (): void => {
-    const report = verifySystemProperties(nodes, edges);
-    setVerifyReport(report);
-    setIsVerifyModalOpen(true);
+  const selectSideView = (view: SideView): void => {
+    if (isSideBarOpen && view === sideView) {
+      setIsSideBarOpen(false);
+    } else {
+      setSideView(view);
+      setIsSideBarOpen(true);
+    }
   };
 
-  const handleGeneratePDF = (): void => {
-    const html = generateArchitectureReportHtml(nodes, edges);
-    setPdfReportHtml(html);
+  const showPanel = (view: PanelView): void => {
+    if (isPanelOpen && panelView === view) {
+      setIsPanelOpen(false);
+    } else {
+      setPanelView(view);
+      setIsPanelOpen(true);
+    }
+  };
+
+  const proveAndShow = (): void => {
+    setPanelView('proofs');
+    setIsPanelOpen(true);
+    model.proof.prove();
+  };
+
+  // VS Code's shortcuts: Ctrl+B toggles the side bar, Ctrl+J toggles the panel
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+      if (e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        setIsSideBarOpen((open) => !open);
+      } else if (e.key.toLowerCase() === 'j') {
+        e.preventDefault();
+        setIsPanelOpen((open) => !open);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  const handleExportPdf = (): void => {
+    setPdfReportHtml(generateArchitectureReportHtml(nodes, edges));
     setIsPdfModalOpen(true);
   };
 
@@ -130,8 +136,7 @@ export default function App(): React.JSX.Element {
           alert(`RobotPy script exported successfully to:\n${response.filePath}`);
         }
       } else {
-        const blob = new Blob([pythonCode], { type: 'text/x-python' });
-        const url = URL.createObjectURL(blob);
+        const url = URL.createObjectURL(new Blob([pythonCode], { type: 'text/x-python' }));
         const a = document.createElement('a');
         a.href = url;
         a.download = 'robot.py';
@@ -144,138 +149,134 @@ export default function App(): React.JSX.Element {
     }
   };
 
-  const handleEdgeClick = (_: React.MouseEvent, edge: Edge) => {
-    if (window.confirm(`Delete connection "${edge.label || 'Wire'}"?`)) {
-      removeEdge(edge.id);
-    }
+  const tabTitle = (tab: EditorTab): { label: string; icon: React.ReactNode } => {
+    if (tab.id === 'diagram') return { label: 'Architecture', icon: <Workflow className="w-3.5 h-3.5 text-sky-400" /> };
+    if (tab.id === 'aadl') return { label: 'FRC_Robot_Architecture.aadl', icon: <FileText className="w-3.5 h-3.5 text-indigo-400" /> };
+    if (tab.id === 'judges') return { label: 'Judge Report', icon: <Award className="w-3.5 h-3.5 text-amber-400" /> };
+    return { label: `${scopeLabel(tab.scope, FRC_DEVICE_DEFAULTS)}.agree`, icon: <Sigma className="w-3.5 h-3.5 text-emerald-400" /> };
   };
 
+  const activeTab = tabs.find((t) => t.id === activeTabId) || DIAGRAM_TAB;
+  const problemCount = collectProblems(model).filter((p) => p.severity === 'error').length;
+  const isResizing = sideBar.isDragging || panel.isDragging;
+  // Changing this tells the diagram to refit after the layout settles
+  const layoutKey = `${isSideBarOpen}-${isPanelOpen}-${activeTab.id === 'diagram'}-${isResizing ? 'drag' : `${sideBar.size}x${panel.size}`}`;
+
   return (
-    <div className="flex w-screen h-screen bg-slate-950 text-slate-100 overflow-hidden">
-      <aside className="w-80 border-r border-slate-800 bg-slate-900 flex flex-col justify-between z-10 shadow-2xl">
-        <div className="p-4 space-y-4 overflow-y-auto max-h-[calc(100vh-200px)]">
-          <div className="flex items-center gap-2 pb-3 border-b border-slate-800">
-            <Layers className="text-indigo-500 w-6 h-6" />
-            <div>
-              <h1 className="text-lg font-mono font-black tracking-tight text-slate-100">SysMod Studio</h1>
-              <p className="text-[10px] text-indigo-400 font-sans tracking-widest uppercase font-semibold">FRC Subsystem Architecture</p>
-            </div>
-          </div>
+    <div className={`flex flex-col w-screen h-screen bg-slate-950 text-slate-100 overflow-hidden ${isResizing ? 'select-none' : ''}`}>
+      <div className="flex flex-1 min-h-0">
+        <ActivityBar activeView={sideView} isSideBarOpen={isSideBarOpen} problemCount={problemCount} onSelect={selectSideView} onBack={() => navigate('/brainstorming')} />
 
-          <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => navigate('/brainstorming')} className="py-2 px-3 rounded bg-slate-950 border border-slate-800 text-[11px] font-mono font-bold text-slate-300 flex items-center justify-center gap-1">
-              <ArrowLeft className="w-3.5 h-3.5" /> Back
-            </button>
-            <button onClick={() => alert('Workspace Saved')} className="py-2 px-3 rounded bg-indigo-950/40 border border-indigo-500/30 text-[11px] font-mono font-bold text-indigo-300 flex items-center justify-center gap-1">
-              <Save className="w-3.5 h-3.5" /> Save JSON
-            </button>
-          </div>
+        {isSideBarOpen && (
+          <aside style={{ width: sideBar.size }} className="relative shrink-0 flex flex-col bg-slate-900 border-r border-slate-800" aria-label="Side bar">
+            {sideView === 'components' && <ComponentsView />}
+            {sideView === 'contracts' && <ContractsView model={model} onOpenAadl={() => openTab({ id: 'aadl' })} onOpenContract={openContract} />}
+            {sideView === 'project' && (
+              <ProjectView
+                onExportPdf={handleExportPdf}
+                onExportRobotPy={handleExportRobotPy}
+                onViewCode={() => setIsCodeModalOpen(true)}
+                onSaveAadl={() => downloadAadl(model.aadl)}
+                onOpenJudgeReport={openJudgeReport}
+              />
+            )}
+            <div
+              onPointerDown={sideBar.start}
+              className="absolute top-0 -right-1 bottom-0 w-2 cursor-col-resize z-10 hover:bg-indigo-500/40"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize side bar"
+            />
+          </aside>
+        )}
 
-          <button
-            onClick={handleRunVerification}
-            className="w-full py-2.5 px-3 rounded flex items-center justify-center gap-2 text-xs font-mono bg-emerald-950/40 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-900/60 transition font-bold"
-          >
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            Verify FRC System Rules
-          </button>
-
-          <div className="space-y-3 border-t border-slate-800/80 pt-3">
-            <h2 className="text-xs font-mono uppercase tracking-wider text-slate-400 px-1">FRC Component Palette</h2>
-            {FRC_HARDWARE_CATALOG.map((item) => {
-              const ItemIcon = item.icon;
+        <div className="flex-1 min-w-0 flex flex-col">
+          {/* Editor tabs */}
+          <div className="h-9 shrink-0 flex items-end bg-slate-950 border-b border-slate-800 overflow-x-auto" role="tablist">
+            {tabs.map((tab) => {
+              const { label, icon } = tabTitle(tab);
+              const isActive = tab.id === activeTab.id;
               return (
-                <button
-                  key={item.id}
-                  onClick={() => addDevice(item.id)}
-                  className={`w-full flex items-center justify-between p-2 rounded bg-slate-950 hover:bg-slate-800 border ${item.borderColor} text-left transition group`}
+                <div
+                  key={tab.id}
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => setActiveTabId(tab.id)}
+                  onAuxClick={(e) => e.button === 1 && closeTab(tab.id)}
+                  className={`group h-full flex items-center gap-1.5 pl-3 pr-1.5 border-r border-slate-800 text-xs font-mono cursor-pointer select-none whitespace-nowrap ${
+                    isActive ? 'bg-slate-900 text-slate-100 border-t-2 border-t-indigo-400' : 'text-slate-500 hover:text-slate-300 border-t-2 border-t-transparent'
+                  }`}
                 >
-                  <div className="flex items-center gap-2">
-                    <ItemIcon className={`w-3.5 h-3.5 ${item.iconColor}`} />
-                    <span className="text-xs font-mono text-slate-300">{item.label}</span>
-                  </div>
-                  <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-400 transition" />
-                </button>
+                  {icon}
+                  {label}
+                  {tab.id !== 'diagram' ? (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        closeTab(tab.id);
+                      }}
+                      aria-label={`Close ${label}`}
+                      className={`p-0.5 rounded hover:bg-slate-700 ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  ) : (
+                    <span className="w-4" />
+                  )}
+                </div>
               );
             })}
           </div>
-        </div>
 
-        <div className="p-4 border-t border-slate-800 flex flex-col gap-2 bg-slate-950/40">
-          <button onClick={clearWorkspace} className="w-full py-1.5 px-3 rounded flex items-center justify-center gap-2 text-xs font-mono bg-slate-900 border border-red-500/20 text-red-400 hover:border-red-500/50 transition">
-            <Trash2 className="w-3.5 h-3.5" /> Clear Canvas
-          </button>
-          <button onClick={handleGeneratePDF} className="w-full py-2 px-3 rounded flex items-center justify-center gap-2 text-xs font-mono font-bold bg-sky-950/60 border border-sky-500/40 text-sky-300 hover:bg-sky-900/60 transition shadow-md">
-            <FileText className="w-3.5 h-3.5 text-sky-400" /> Export PDF / BOM Spec
-          </button>
-          <button onClick={handleExportRobotPy} className="w-full py-2.5 px-3 rounded flex items-center justify-center gap-2 text-xs font-mono font-bold bg-emerald-600 text-white hover:bg-emerald-500 transition shadow-lg shadow-emerald-600/20">
-            <FileCode className="w-4 h-4" /> Export robot.py (RobotPy)
-          </button>
-        </div>
-      </aside>
+          {/* The diagram stays mounted so its pan and zoom survive switching tabs */}
+          <div className="relative flex-1 min-h-0">
+            <div className={`absolute inset-0 ${activeTab.id === 'diagram' ? '' : 'invisible pointer-events-none'}`}>
+              <DiagramEditor isVisible={activeTab.id === 'diagram'} layoutKey={layoutKey} />
+            </div>
+            {/* Opaque and on top, because React Flow forces its nodes visible inside a hidden parent */}
+            {activeTab.id === 'aadl' && (
+              <div className="absolute inset-0 z-10 bg-slate-950">
+                <AadlEditor aadl={model.aadl} />
+              </div>
+            )}
+            {activeTab.id === 'judges' && (
+              <div className="absolute inset-0 z-10 bg-slate-950">
+                <JudgeReport model={model} />
+              </div>
+            )}
+            {'scope' in activeTab && (
+              <div className="absolute inset-0 z-10 bg-slate-950">
+                <ContractEditor key={activeTab.scope} scope={activeTab.scope} model={model} onProve={proveAndShow} />
+              </div>
+            )}
+          </div>
 
-      <main className="flex-1 h-full relative bg-slate-950">
-        <div className="absolute top-4 right-4 z-20 bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-xl p-3 shadow-2xl flex items-center gap-4 text-xs font-mono">
-          <span className="text-slate-400 font-bold uppercase text-[10px] tracking-wider border-r border-slate-800 pr-3">
-            Wiring Standards:
-          </span>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-red-600" />
-            <span className="text-slate-300 text-[11px]">120A Main Bus</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-sky-400" />
-            <span className="text-slate-300 text-[11px]">Regulated Power</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-            <span className="text-slate-300 text-[11px]">CAN Bus</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-600" />
-            <span className="text-slate-300 text-[11px]">CAN FD</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
-            <span className="text-slate-300 text-[11px]">RSL Signal</span>
-          </div>
+          {isPanelOpen && (
+            <BottomPanel
+              model={model}
+              view={panelView}
+              height={panel.size}
+              onViewChange={setPanelView}
+              onClose={() => setIsPanelOpen(false)}
+              onOpenContract={openContract}
+              onOpenJudgeReport={openJudgeReport}
+              onResizeStart={panel.start}
+            />
+          )}
         </div>
+      </div>
 
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onEdgeClick={handleEdgeClick}
-          nodeTypes={nodeTypes}
-          fitView
-          proOptions={proOptions}
-        >
-          <Background color="#334155" gap={16} size={1} />
-          <Controls className="bg-slate-900! border-slate-700! fill-slate-200! [&_button]:border-slate-800! [&_button]:bg-slate-900" />
-        </ReactFlow>
-      </main>
+      <StatusBar model={model} onShowPanel={showPanel} />
 
       <CodeViewerModal
         isOpen={isCodeModalOpen}
         onClose={() => setIsCodeModalOpen(false)}
-        aadlCode={modalAadl}
-        javaCode={modalJava}
-        pythonCode={modalPython}
+        aadlCode={model.aadl}
+        javaCode={isCodeModalOpen ? generateJavaCode(nodes, edges) : ''}
+        pythonCode={isCodeModalOpen ? generatePythonCode(nodes, edges) : ''}
       />
 
-      <SystemVerificationModal
-        isOpen={isVerifyModalOpen}
-        onClose={() => setIsVerifyModalOpen(false)}
-        report={verifyReport}
-      />
-
-      {/* Embedded In-App PDF Preview Modal */}
-      <PdfPreviewModal
-        isOpen={isPdfModalOpen}
-        onClose={() => setIsPdfModalOpen(false)}
-        htmlContent={pdfReportHtml}
-      />
+      <PdfPreviewModal isOpen={isPdfModalOpen} onClose={() => setIsPdfModalOpen(false)} htmlContent={pdfReportHtml} />
     </div>
   );
 }

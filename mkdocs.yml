@@ -5,6 +5,20 @@ nav:
       - Installation: getting-started/installation.md
       - Design Brief: getting-started/design-brief.md
       - Moscow Selector: getting-started/moscow-selector.md
+  - Formal Verification:
+      - What is AADL?: verification/what-is-aadl.md
+      - What is AGREE?: verification/what-is-agree.md
+      - How AADL and AGREE work together: verification/aadl-and-agree.md
+      - AADL and AGREE for FRC: verification/aadl-agree-for-frc.md
+      - Showing judges your proofs: verification/judge-report.md
+      - How SysMod runs AGREE without OSATE: verification/agree-without-osate.md
 theme: readthedocs
 markdown_extensions:
   - admonition
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+extra_javascript:
+  - https://unpkg.com/mermaid@10.9.1/dist/mermaid.min.js

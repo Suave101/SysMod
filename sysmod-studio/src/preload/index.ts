@@ -14,5 +14,6 @@ interface SaveFileResponse {
 contextBridge.exposeInMainWorld('sysmodAPI', {
   saveJavaFile: async (code: string): Promise<SaveFileResponse> => {
     return await ipcRenderer.invoke('save-java-file', code);
-  }
+  },
+  runJKind: (lustre: string, timeoutSec?: number) => ipcRenderer.invoke('run-jkind', lustre, timeoutSec)
 });

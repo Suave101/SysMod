@@ -5,3 +5,5 @@ out
 .eslintcache
 *.log*
 *.env
+# Built by scripts/build-jkind.mjs
+resources/jkind/

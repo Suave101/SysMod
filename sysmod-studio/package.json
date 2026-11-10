@@ -15,6 +15,8 @@
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "electron-builder install-app-deps",
+    "build:jkind": "node scripts/build-jkind.mjs",
+    "test:proofs": "esbuild scripts/test-proofs.ts --bundle --platform=node --format=cjs --external:electron --log-level=warning --outfile=out/test/test-proofs.cjs && node out/test/test-proofs.cjs",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
