@@ -170,11 +170,11 @@ export default function DesignBrief() {
                 <div className="flex gap-2">
                   <input 
                     type="text" value={teamNumber} onChange={(e) => setTeamNumber(e.target.value)}
-                    className="w-1/3 bg-slate-950 border border-slate-800 rounded p-3 text-center text-white text-sm focus:outline-none" placeholder="254"
+                    className="w-1/3 bg-slate-950 border border-slate-800 rounded p-3 text-center text-white text-sm focus:outline-none" placeholder="0000"
                   />
                   <input 
                     type="text" value={teamName} onChange={(e) => setTeamName(e.target.value)}
-                    className="w-2/3 bg-slate-950 border border-slate-800 rounded p-3 text-white text-sm focus:outline-none" placeholder="The Cheesy Poofs"
+                    className="w-2/3 bg-slate-950 border border-slate-800 rounded p-3 text-white text-sm focus:outline-none" placeholder="Panther Robotics"
                   />
                 </div>
               </div>

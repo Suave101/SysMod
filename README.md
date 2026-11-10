@@ -70,6 +70,23 @@ We are currently building **Phase 1**, focusing on rapid architecture mapping an
 
 ---
 
+## 📦 Releasing
+
+Releases are built and published by [`.github/workflows/release.yml`](.github/workflows/release.yml). To publish one, push a version tag:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The workflow compiles JKind, runs the proof tests, builds the Windows installer and the Linux AppImage, and publishes them in one GitHub Release with auto-generated notes. You don't need to change the version in `package.json`, because the workflow sets it from the tag.
+
+* Tags with a suffix, like `v0.1.0-alpha` or `v0.1.0-rc.1`, are published as **prereleases**.
+* To rebuild an existing release, open **Actions → Release → Run workflow** and enter the tag. The release's files are replaced.
+* The installers aren't code-signed yet, so Windows SmartScreen shows a warning the first time students run them.
+
+---
+
 ## 🤝 Contributing
 
 We welcome contributions from FIRST mentors, alumni, and students! Whether it's adding new REV/CTRE components to the React Flow node library, improving the Java Handlebars templates, or writing documentation, check out our `CONTRIBUTING.md` file to get started.

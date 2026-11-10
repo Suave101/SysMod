@@ -108,7 +108,7 @@ async function main(): Promise<void> {
   check('theorems print as math', theorem === '0 ≤ kraken6.pwr_12v_in(t) ≤ 16', theorem);
 
   const html = renderJudgeReportHtml({
-    team: { number: '0000', name: 'Test Team' },
+    team: { number: '0000', name: 'Panther Robotics' },
     generatedAt: new Date(0),
     program: custom.program,
     results: custom.results,
@@ -121,7 +121,7 @@ async function main(): Promise<void> {
   fs.writeFileSync('out/test/judge-report.html', html);
   check(
     'the Judge Report renders every proof',
-    html.startsWith('<!doctype html>') && explained.every((_, i) => html.includes(`id="proof-${i + 1}"`)) && html.includes('∎') && html.includes('Team 0000'),
+    html.startsWith('<!doctype html>') && explained.every((_, i) => html.includes(`id="proof-${i + 1}"`)) && html.includes('∎') && html.includes('Team 0000') && html.includes('Panther Robotics'),
   );
 
   console.log(failures ? `${failures} FAILED` : 'All proof checks passed');

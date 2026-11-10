@@ -26,7 +26,7 @@ The Document Information section establishes key project metadata, identifying t
     - __Action:__ Click the text box and enter the names or roles of the student designers leading the project (e.g., Lead Mechanical & Software Engineers).
 2. **Team Name & FRC Number:**
     - __Purpose:__ Links the document to your team's official FIRST registration details.
-    - __Action:__ Enter your numeric FRC team number in the first box (e.g., 254) and your official team name in the adjacent box (e.g., The Cheesy Poofs).
+    - __Action:__ Enter your numeric FRC team number in the first box (e.g., 0000) and your official team name in the adjacent box (e.g., Panther Robotics).
 3. **Client:**
     - __Purpose:__ Identifies the primary evaluation body for the portfolio.
     - __Action:__ Click the text field and specify the target reviewing audience (e.g., FRC Event Officials & Technical Judges).

@@ -1,25 +1,55 @@
-# Code Changes
-name: Publish Electron Release
+# Builds SysMod Studio for each platform and publishes a GitHub Release with the installers.
+#
+# To release: push a tag that starts with "v", for example
+#   git tag v0.1.0 && git push origin v0.1.0
+# Tags with a suffix (v0.1.0-alpha, v0.1.0-rc.1) are published as prereleases.
+# To rebuild a release for a tag that already exists, run this workflow by hand from the Actions tab.
+name: Release
 
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build and release, for example v0.1.0'
+        required: true
+
+# Two runs for the same tag would race to upload the same files
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
 jobs:
-  build-and-publish:
-    runs-on: windows-latest
-
+  build:
+    name: Build (${{ matrix.os }})
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # The bundled Java runtime is platform specific, so each installer is built on its own OS
+          - os: windows-latest
+            target: --win nsis
+          - os: ubuntu-latest
+            target: --linux AppImage
+    runs-on: ${{ matrix.os }}
     permissions:
-      contents: write
+      contents: read
 
     defaults:
       run:
         working-directory: ./sysmod-studio
+        shell: bash
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout the tag
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -36,13 +66,17 @@ jobs:
           distribution: 'zulu'
           java-version: '11'
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: npm ci
 
-      # The installer version comes from package.json, so match it to the tag (v1.2.3 -> 1.2.3)
-      - name: Set Version From Tag
-        shell: bash
-        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
+      # The installer and auto-update version come from package.json, so match it to the tag
+      - name: Set version from tag
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag $TAG is not a version like v1.2.3 or v1.2.3-alpha"
+            exit 1
+          fi
+          npm version "${TAG#v}" --no-git-tag-version --allow-same-version
 
       - name: Compile JKind and bundle a Java runtime
         run: npm run build:jkind -- --rebuild
@@ -53,7 +87,53 @@ jobs:
       - name: Build the app
         run: npx electron-vite build
 
-      - name: Build and Publish Electron App
-        run: npx electron-builder --win --publish always
+      # Publishing happens in the release job, so both platforms land in one release
+      - name: Package the installer
+        run: npx electron-builder ${{ matrix.target }} --publish never
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.os }}
+          if-no-files-found: error
+          # latest*.yml and .blockmap files let installed copies update themselves
+          path: |
+            sysmod-studio/dist/*.exe
+            sysmod-studio/dist/*.exe.blockmap
+            sysmod-studio/dist/*.AppImage
+            sysmod-studio/dist/latest*.yml
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download installers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: installer-*
+          path: release
+          merge-multiple: true
+
+      - name: Create or update the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          ls -l release
+          prerelease=""
+          if [[ "$TAG" == *-* ]]; then prerelease="--prerelease"; fi
+
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG exists, replacing its files"
+            gh release upload "$TAG" release/* --clobber
+          else
+            gh release create "$TAG" release/* \
+              --title "SysMod Studio ${TAG#v}" \
+              --generate-notes \
+              --verify-tag \
+              $prerelease
+          fi
