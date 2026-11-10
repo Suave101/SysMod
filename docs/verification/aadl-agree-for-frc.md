@@ -21,7 +21,7 @@ Select the active activity bar icon again to hide the side bar. **Ctrl+B** toggl
 | | Problems | Proofs |
 |---|---|---|
 | **Checks** | How the robot is wired | How the robot behaves over time |
-| **Example** | "The RSL must connect to the roboRIO RSL header." | "PWM outputs are always 0 during a brownout." |
+| **Example** | "The RSL must connect to the robot controller's RSL port." | "PWM outputs are always 0 during a brownout." |
 | **How** | Instant checks on the diagram | A JKind proof over every possible input |
 | **Runs** | Whenever the diagram changes | When you select **Prove** |
 
@@ -60,6 +60,7 @@ These contracts are always included, and you can't edit them. They appear in the
 | REV PDH | **Guarantee:** every channel stays between 0 V and the PDH input | Fuses and breakers can only remove power, not add it. |
 | Mini Power Module | **Guarantee:** outputs stay between 0 V and the module input | Same as the PDH. |
 | VRM, buck converter | **Guarantee:** regulated output stays between 0 V and 12 V | These regulators output at most 12 V. |
+| SystemCore | **Guarantee:** PWM outputs stay between -1 and 1 | The PWM duty cycle range. SystemCore's brownout guarantee will be added once FIRST publishes its threshold. |
 | roboRIO 2.0 | **Guarantee:** PWM outputs stay between -1 and 1 | The PWM duty cycle range |
 | roboRIO 2.0 | **Guarantee:** PWM outputs are 0 below 6.75 V | The roboRIO 2.0 disables PWM outputs during a brownout. 6.75 V is its default threshold. |
 | Every powered device | **Assume:** supply stays between 0 V and 16 V | 16 V is the roboRIO 2.0 maximum input, the lowest maximum among common FRC control electronics. |
@@ -96,7 +97,7 @@ lemma "Servo is idle during a brownout" :
   rio4.pwr_12v_in < 6.75 => servo7.pwm_in = 0.0;
 ```
 
-The second example is proved from the roboRIO's standard brownout guarantee and the PWM wire.
+The second example is proved from the roboRIO's standard brownout guarantee and the PWM wire. On a SystemCore robot it can't be proved yet, because SystemCore has no brownout guarantee until FIRST publishes its threshold.
 
 A limit on how fast voltage can drop, using time:
 

@@ -10,6 +10,8 @@ import {
   applyEdgeChanges, 
   addEdge 
 } from '@xyflow/react';
+import { connectionProblem } from '../utils/connectionRules';
+import { CONTROLLER_CAN_HANDLES, CONTROLLERS, DEFAULT_CONTROLLER, findController, isControllerType } from '../utils/controllers';
 
 export type PortType = 'pwr12v' | 'pwr10a' | 'pwrRegulated' | 'can' | 'canfd' | 'eth' | 'pneumatic' | 'pwm' | 'dio' | 'rsl' | 'usb';
 
@@ -97,10 +99,13 @@ export const FRC_DEVICE_DEFAULTS: Record<string, { label: string; category: Devi
   MPM: { label: 'REV Mini Power Module', category: 'Power & Protection', protocol: 'Fused 12V', details: 'Passive Fused Power Splitter', cost: 25.00 },
   BuckConverter: { label: '5V/12V Buck Converter', category: 'Power & Protection', protocol: 'DC-DC Regulated', details: 'Clean Power for Coprocessors', cost: 15.00 },
 
-  roboRIO: { label: 'roboRIO 2.0', category: 'Control & Communication', protocol: 'CAN / Eth / USB / DIO / PWM', details: 'Main Robot Controller', cost: 450.00 },
+  // SystemCore's price had not been announced as of November 2026, so it costs 0 until it is
+  SystemCore: { label: 'SystemCore', category: 'Control & Communication', protocol: '5x CAN FD / Eth / USB / Smart I/O', details: 'Robot Controller, 2027 and later', cost: 0 },
+  roboRIO: { label: 'roboRIO 2.0', category: 'Control & Communication', protocol: 'CAN / Eth / USB / DIO / PWM', details: 'Robot Controller, 2026 and earlier', cost: 450.00 },
   RadioSwitch: { label: 'VH-109 FRC Radio', category: 'Control & Communication', protocol: 'Ethernet / Passive PoE', details: '4-Port Wi-Fi 6E FRC Radio', cost: 150.00 },
   RSL: { label: 'Robot Signal Light (RSL)', category: 'Control & Communication', protocol: 'RSL Signal', details: 'Robot Status Light', cost: 35.00 },
   CANivore: { label: 'CTRE CANivore', category: 'Control & Communication', protocol: 'USB to CAN FD', details: 'Secondary CAN FD Bus Adapter', cost: 299.99 },
+  NetworkSwitch: { label: 'Ethernet Switch', category: 'Control & Communication', protocol: 'Ethernet', details: '1 Uplink + 4 Device Ports', cost: 30.00 },
   CANHub: { label: 'WCP CAN Bus Hub', category: 'Control & Communication', protocol: 'CAN Splitter', details: 'CAN Bus Distribution Board', cost: 25.00 },
 
   KrakenX60: { label: 'Kraken X60 Motor', category: 'Motors & Controllers', protocol: 'CAN / CAN FD', details: 'Brushless Motor + Integrated TalonFX', cost: 217.99 },
@@ -120,7 +125,7 @@ export const FRC_DEVICE_DEFAULTS: Record<string, { label: string; category: Devi
   CANcoder: { label: 'CTRE CANcoder', category: 'Sensors', protocol: 'CAN / CAN FD', details: 'Absolute Encoder', cost: 65.00 },
   ThroughBore: { label: 'REV Through Bore Encoder', category: 'Sensors', protocol: 'DIO Duty Cycle', details: 'Absolute / Quadrature Encoder', cost: 45.00 },
   Pigeon2: { label: 'Pigeon 2.0 IMU', category: 'Sensors', protocol: 'CAN / CAN FD', details: '9-Axis IMU', cost: 199.99 },
-  NavX2: { label: 'navX2-MXP Gyro', category: 'Sensors', protocol: 'MXP (SPI / I2C)', details: 'Plugs Into roboRIO MXP Port', cost: 100.00 },
+  NavX2: { label: 'navX2-MXP Gyro', category: 'Sensors', protocol: 'MXP (SPI / I2C)', details: 'roboRIO MXP Port Only', cost: 100.00 },
   LimitSwitch: { label: 'Limit Switch', category: 'Sensors', protocol: 'DIO Contact', details: 'Physical Hardstop Sensor', cost: 10.00 },
   BeamBreak: { label: 'Beam-Break Sensor', category: 'Sensors', protocol: 'DIO Optical', details: 'Game Piece Sensor', cost: 15.00 },
   TimeOfFlight: { label: 'LaserCAN ToF Sensor', category: 'Sensors', protocol: 'CAN', details: 'Laser Distance Measurement', cost: 35.00 },
@@ -233,6 +238,8 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
 
   onConnect: (connection) => {
     const { nodes, edges, getPdhAllocations } = get();
+    // The diagram already refuses these while dragging; this guards every other way in
+    if (connectionProblem(connection, nodes, edges)) return;
     const sourceNode = nodes.find((n) => n.id === connection.source);
     const targetNode = nodes.find((n) => n.id === connection.target);
 
@@ -341,8 +348,8 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
       const otherNode = isRadioSource ? targetNode : sourceNode;
 
       if (radioHandle === 'eth-rio') {
-        if (otherNode?.data?.deviceType !== 'roboRIO') {
-          alert("Violates FRC Rules: The Radio's RIO port is reserved exclusively for the RoboRIO!");
+        if (!isControllerType(otherNode?.data?.deviceType)) {
+          alert("Violates FRC Rules: The Radio's RIO port is reserved for the robot controller (SystemCore or roboRIO)!");
           return;
         }
       }
@@ -428,7 +435,7 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
     const isCanTerminationPoint = targetNode?.data?.deviceType === 'PDH' && connection.targetHandle === 'can-term';
     if (isCanConnection) {
       let label = 'CAN Bus [Loop]';
-      if (connection.sourceHandle === 'can-start') label = 'CAN Bus [RIO Start]';
+      if (CONTROLLER_CAN_HANDLES.includes(connection.sourceHandle || '')) label = `CAN Bus [${connection.sourceHandle === 'can-start' ? 'RIO' : connection.sourceHandle?.replace('can-', 'Bus ')} Start]`;
       if (isCanTerminationPoint) label = 'CAN Bus [120Ω Terminated]';
 
       set({
@@ -480,7 +487,13 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
       y: 80 + Math.floor(nodeCount / 3) * 230,
     };
 
-    const isController = ['roboRIO', 'PDH', 'RadioSwitch', 'MainBreaker120A', 'CANivore', 'PneumaticsHub'].includes(type);
+    const isController = ['SystemCore', 'roboRIO', 'PDH', 'RadioSwitch', 'MainBreaker120A', 'CANivore', 'PneumaticsHub', 'NetworkSwitch'].includes(type);
+    // SystemCore's Smart I/O ports serve as either DIO or PWM, so both draw numbers from one pool
+    const controller = findController(nodes)?.spec || CONTROLLERS[DEFAULT_CONTROLLER];
+    const { min, max } = controller.ioRange;
+    const usedDio = nodes.map((n) => n.data.dioPort);
+    const usedPwm = nodes.map((n) => n.data.pwmPort);
+    const ioPool = (own: (number | undefined)[]): number | undefined => lowestUnused(controller.sharedIo ? [...usedDio, ...usedPwm] : own, min, max);
 
     const newNode: Node<FRCNodeData> = {
       id,
@@ -493,8 +506,8 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
         protocol: config.protocol,
         details: config.details,
         canId: CAN_ID_DEVICES.includes(type) ? lowestUnused(nodes.map((n) => n.data.canId), 1, 62) : undefined,
-        dioPort: DIO_DEVICES.includes(type) ? lowestUnused(nodes.map((n) => n.data.dioPort), 0, 9) : undefined,
-        pwmPort: type === 'PWMServo' ? lowestUnused(nodes.map((n) => n.data.pwmPort), 0, 9) : undefined,
+        dioPort: DIO_DEVICES.includes(type) ? ioPool(usedDio) : undefined,
+        pwmPort: type === 'PWMServo' ? ioPool(usedPwm) : undefined,
         currentLimit: MOTOR_CONTROLLERS.includes(type) ? 40 : undefined,
       },
     };

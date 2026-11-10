@@ -10,8 +10,8 @@ const SINGLE_PORT_DEVICES: Record<string, { handle: string; label: string; isInp
   Compressor: { handle: 'comp-in', label: 'Pneumatic Hub Power In', isInput: true },
   SolenoidValve: { handle: 'sol-in', label: 'Solenoid Channel In', isInput: true },
   PressureSwitch: { handle: 'press-out', label: 'Switch Signal Out', isInput: false },
-  ColorSensor: { handle: 'i2c-out', label: 'I2C To roboRIO', isInput: false },
-  NavX2: { handle: 'mxp-out', label: 'MXP To roboRIO', isInput: false },
+  ColorSensor: { handle: 'i2c-out', label: 'I2C To Controller', isInput: false },
+  NavX2: { handle: 'mxp-out', label: 'MXP To roboRIO (Not On SystemCore)', isInput: false },
   PhotonVision: { handle: 'usb-out', label: 'USB To Coprocessor', isInput: false },
 };
 
@@ -69,7 +69,7 @@ export const StandardNode: React.FC<NodeProps> = ({ id, data }) => {
           <div className="flex items-center justify-between text-[9px] font-mono text-yellow-400 bg-slate-950/90 px-2 py-1 rounded border border-yellow-500/30 relative">
             <Handle type="target" position={Position.Left} id="rsl-in" className="w-3 h-3 !bg-yellow-400 !border-2 !border-slate-950 rounded-full !left-[-11px]" />
             <span>RSL Header In</span>
-            <span className="text-slate-500 text-[8px]">roboRIO</span>
+            <span className="text-slate-500 text-[8px]">Controller</span>
           </div>
         </div>
       </div>
@@ -142,8 +142,8 @@ export const StandardNode: React.FC<NodeProps> = ({ id, data }) => {
           </div>
           <div className="flex items-center justify-between text-[9px] font-mono text-emerald-400 bg-slate-950/90 px-2 py-1 rounded border border-emerald-500/20 relative">
             <Handle type="target" position={Position.Left} id="eth-in" className="w-3 h-3 !bg-emerald-500 !border-2 !border-slate-950 rounded-full !left-[-11px]" />
-            <span>Ethernet Data</span>
-            <Handle type="source" position={Position.Right} id="eth-out" className="w-3 h-3 !bg-emerald-500 !border-2 !border-slate-950 rounded-full !right-[-11px]" />
+            <span>Ethernet Port</span>
+            <span className="text-slate-500 text-[8px]">From Radio AUX or Switch</span>
           </div>
           {deviceType === 'Coprocessor' && (
             <div className="flex items-center justify-between text-[9px] font-mono text-indigo-400 bg-slate-950/90 px-2 py-1 rounded border border-indigo-500/20 relative">

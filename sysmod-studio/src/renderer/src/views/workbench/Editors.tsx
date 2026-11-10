@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
-import { Background, Controls, Edge, Node, NodeTypes, ReactFlow, ReactFlowInstance } from '@xyflow/react';
-import { Check, ChevronDown, ChevronRight, Copy, Download, Loader2, Play, ShieldCheck } from 'lucide-react';
+import { Background, Connection, Controls, Edge, Node, NodeTypes, OnConnectEnd, ReactFlow, ReactFlowInstance } from '@xyflow/react';
+import { connectionProblem } from '../utils/connectionRules';
+import { Ban, Check, ChevronDown, ChevronRight, Copy, Download, Loader2, Play, ShieldCheck } from 'lucide-react';
 import { FRCNodeData, FRC_DEVICE_DEFAULTS, useRobotStore } from '../store/useRobotStore';
 import { ControlHubNode } from '../components/ControlHubNode';
 import { StandardNode } from '../components/StandardNode';
@@ -94,6 +95,24 @@ export const DiagramEditor: React.FC<DiagramEditorProps> = ({ isVisible, layoutK
     if (window.confirm(`Delete connection "${edge.label || 'Wire'}"?`)) removeEdge(edge.id);
   };
 
+  // Impossible wires, like power into a CAN port, won't snap to the handle while you drag
+  const isValidConnection = useCallback((c: Connection | Edge): boolean => !connectionProblem(c, nodes, edges), [nodes, edges]);
+
+  // ...and when you let go over one, say why
+  const [refusal, setRefusal] = useState<string>();
+  const handleConnectEnd: OnConnectEnd = (_event, state) => {
+    const { fromHandle, toHandle } = state;
+    if (state.isValid !== false || !fromHandle || !toHandle) return;
+    const [start, end] = fromHandle.type === 'source' ? [fromHandle, toHandle] : [toHandle, fromHandle];
+    const reason = connectionProblem({ source: start.nodeId, sourceHandle: start.id ?? null, target: end.nodeId, targetHandle: end.id ?? null }, nodes, edges);
+    if (reason) setRefusal(reason);
+  };
+  useEffect(() => {
+    if (!refusal) return;
+    const timer = setTimeout(() => setRefusal(undefined), 4000);
+    return () => clearTimeout(timer);
+  }, [refusal]);
+
   return (
     <div ref={canvasRef} className="relative w-full h-full bg-slate-950">
       <div className="absolute top-3 right-3 z-20 max-w-[calc(100%-1.5rem)] bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-lg px-3 py-2 shadow-2xl flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-mono">
@@ -119,6 +138,8 @@ export const DiagramEditor: React.FC<DiagramEditorProps> = ({ isVisible, layoutK
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          isValidConnection={isValidConnection}
+          onConnectEnd={handleConnectEnd}
           onEdgeClick={handleEdgeClick}
           onInit={setFlowInstance}
           nodeTypes={NODE_TYPES}
@@ -130,6 +151,13 @@ export const DiagramEditor: React.FC<DiagramEditorProps> = ({ isVisible, layoutK
           <Controls className="bg-slate-900! border-slate-700! fill-slate-200! [&_button]:border-slate-800! [&_button]:bg-slate-900" />
         </ReactFlow>
       </NodeAlertsProvider>
+
+      {refusal && (
+        <div role="alert" className="absolute top-14 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-3 py-2 rounded-lg border border-red-500/60 bg-red-950/95 text-red-100 text-xs font-mono shadow-2xl max-w-[90%]">
+          <Ban className="w-4 h-4 shrink-0 text-red-400" />
+          {refusal}
+        </div>
+      )}
 
       {isVisible && <AlertToasts issues={issues} onShow={showOnDiagram} />}
     </div>

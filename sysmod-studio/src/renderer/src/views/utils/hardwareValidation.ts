@@ -14,6 +14,7 @@
 import { Node, Edge } from '@xyflow/react';
 import { FRCEdgeData, FRCNodeData } from '../store/useRobotStore';
 import { getWireFamily, groupWiresByNetwork, isMismatchedWire } from './aadlGenerator';
+import { CONTROLLER_CAN_HANDLES, CONTROLLERS, DEFAULT_CONTROLLER, findController } from './controllers';
 
 export interface HardwareIssue {
   id: string;
@@ -45,6 +46,7 @@ export const CAN_FRAMES_PER_SECOND: Record<string, number> = {
   TimeOfFlight: 50,
   PneumaticsHub: 30,
   PDH: 40,
+  SystemCore: 50,
   roboRIO: 50,
 };
 
@@ -78,7 +80,10 @@ export const motorCurrentLimitA = (node: Node<FRCNodeData>): number => node.data
 
 /** Typical maximum draw, in amps at 12 V, of devices that aren't motors */
 export const DEVICE_CURRENT_A: Record<string, number> = {
+  // SystemCore's draw isn't published yet; this assumes a Raspberry Pi CM5 board under load
+  SystemCore: 3,
   roboRIO: 2,
+  NetworkSwitch: 0.5,
   RadioSwitch: 1.5,
   Limelight: 4,
   Coprocessor: 3,
@@ -114,8 +119,6 @@ export interface PowerLoad {
 // ── IDs ───────────────────────────────────────────────────────────────────────────────────
 
 export const CAN_ID_RANGE = { min: 0, max: 62 };
-export const DIO_RANGE = { min: 0, max: 9 };
-export const PWM_RANGE = { min: 0, max: 9 };
 
 // CAN IDs only need to be unique per device class, and these models share a class
 const CAN_ID_CLASSES: Record<string, string> = {
@@ -131,7 +134,7 @@ const CAN_ID_CLASSES: Record<string, string> = {
 export const canIdClass = (deviceType: string): string => CAN_ID_CLASSES[deviceType] || deviceType;
 
 export interface IdAssignment {
-  kind: 'CAN' | 'DIO' | 'PWM' | 'PDH';
+  kind: 'CAN' | 'DIO' | 'PWM' | 'Smart I/O' | 'PDH';
   scope: string;
   value: number;
   nodeIds: string[];
@@ -159,16 +162,20 @@ export function analyzeHardware(nodes: Node<FRCNodeData>[], edges: Edge[]): Hard
   // ── CAN bus load ──
   const canNetworks = groupWiresByNetwork(validEdges, (e) => e, 'can');
   const canBuses: CanBusLoad[] = canNetworks.map((network, index) => {
+    // CANivore buses run CAN FD. SystemCore's buses can too, but are counted as classic CAN,
+    // which is the slower and safer estimate when the bus mixes in REV devices.
     const isFd = network.some((e) => e.sourceHandle === 'can-fd-start');
     const memberIds = [...new Set(network.flatMap((e) => [e.source, e.target]))];
-    const root = network.find((e) => e.sourceHandle === 'can-fd-start' || e.sourceHandle === 'can-start')?.source;
+    const start = network.find((e) => e.sourceHandle === 'can-fd-start' || CONTROLLER_CAN_HANDLES.includes(e.sourceHandle || ''));
+    const root = start?.source;
     const devices = memberIds
       .map((nodeId) => ({ nodeId, deviceType: typeOf(nodeId), framesPerSecond: CAN_FRAMES_PER_SECOND[typeOf(nodeId)] || 0 }))
       .filter((d) => d.framesPerSecond > 0);
     const framesPerSecond = devices.reduce((sum, d) => sum + d.framesPerSecond, 0);
     const utilization = (framesPerSecond * (isFd ? FRAME_TIME_US.fd : FRAME_TIME_US.classic)) / 1_000_000;
-    const name = root ? `${isFd ? 'CAN FD' : 'CAN'} bus from ${root}` : `CAN chain ${index + 1}`;
-    return { id: root || `chain-${index + 1}`, name, isFd, devices, framesPerSecond, utilization };
+    const systemCoreBus = start && /^can-\d$/.test(start.sourceHandle || '') ? `SystemCore ${start.sourceHandle?.replace('can-', 'CAN ')}` : undefined;
+    const name = systemCoreBus || (root ? `${isFd ? 'CAN FD' : 'CAN'} bus from ${root}` : `CAN chain ${index + 1}`);
+    return { id: root ? `${root}-${start?.sourceHandle}` : `chain-${index + 1}`, name, isFd, devices, framesPerSecond, utilization };
   });
 
   canBuses.forEach((bus) => {
@@ -311,6 +318,9 @@ export function analyzeHardware(nodes: Node<FRCNodeData>[], edges: Edge[]): Hard
   const busOf = new Map<string, CanBusLoad>();
   canNetworks.forEach((network, index) => network.forEach((e) => [e.source, e.target].forEach((id) => busOf.set(id, canBuses[index]))));
 
+  // Port ranges follow the controller on the diagram, or SystemCore when there isn't one yet
+  const io = findController(nodes)?.spec || CONTROLLERS[DEFAULT_CONTROLLER];
+
   nodes.forEach((node) => {
     const { canId, dioPort, pwmPort, deviceType } = node.data || ({} as FRCNodeData);
     if (canId !== undefined) {
@@ -321,18 +331,22 @@ export function analyzeHardware(nodes: Node<FRCNodeData>[], edges: Edge[]): Hard
         issues.push({ id: `id-can-range-${node.id}`, category: 'ids', severity: 'error', title: 'Invalid CAN ID', message: `${nameOf(node.id)} has CAN ID ${canId}. CAN IDs must be whole numbers from ${CAN_ID_RANGE.min} to ${CAN_ID_RANGE.max}.`, nodeIds: [node.id] });
       }
     }
-    if (dioPort !== undefined) {
-      record('DIO', 'roboRIO DIO', dioPort, node.id);
-      if (!Number.isInteger(dioPort) || dioPort < DIO_RANGE.min || dioPort > DIO_RANGE.max) {
-        issues.push({ id: `id-dio-range-${node.id}`, category: 'ids', severity: 'error', title: 'Invalid DIO Port', message: `${nameOf(node.id)} is on DIO port ${dioPort}, but the roboRIO has DIO ports ${DIO_RANGE.min} to ${DIO_RANGE.max}.`, nodeIds: [node.id] });
+    // On SystemCore, DIO and PWM share the six Smart I/O ports, so they're one pool of numbers
+    ([['DIO', dioPort], ['PWM', pwmPort]] as const).forEach(([use, port]) => {
+      if (port === undefined) return;
+      const kind = io.sharedIo ? 'Smart I/O' : use;
+      record(kind, `${io.name} ${kind}`, port, node.id);
+      if (!Number.isInteger(port) || port < io.ioRange.min || port > io.ioRange.max) {
+        issues.push({
+          id: `id-${use.toLowerCase()}-range-${node.id}`,
+          category: 'ids',
+          severity: 'error',
+          title: `Invalid ${kind} Port`,
+          message: `${nameOf(node.id)} is on ${kind} port ${port}, but the ${io.name} has ${kind} ports ${io.ioRange.min} to ${io.ioRange.max}.`,
+          nodeIds: [node.id],
+        });
       }
-    }
-    if (pwmPort !== undefined) {
-      record('PWM', 'roboRIO PWM', pwmPort, node.id);
-      if (!Number.isInteger(pwmPort) || pwmPort < PWM_RANGE.min || pwmPort > PWM_RANGE.max) {
-        issues.push({ id: `id-pwm-range-${node.id}`, category: 'ids', severity: 'error', title: 'Invalid PWM Port', message: `${nameOf(node.id)} is on PWM port ${pwmPort}, but the roboRIO has PWM ports ${PWM_RANGE.min} to ${PWM_RANGE.max}.`, nodeIds: [node.id] });
-      }
-    }
+    });
   });
 
   if (pdh) {
@@ -353,7 +367,7 @@ export function analyzeHardware(nodes: Node<FRCNodeData>[], edges: Edge[]): Hard
         category: 'ids',
         severity: 'error',
         title: a.kind === 'CAN' ? 'Duplicate CAN ID' : `Duplicate ${a.kind === 'PDH' ? 'PDH Channel' : `${a.kind} Port`}`,
-        message: `${who} all use ${where}. ${
+        message: `${who} all use ${where.replace(`${io.name} `, '')}. ${
           a.kind === 'CAN' ? 'Devices of the same kind on one bus need different IDs, or the robot code talks to the wrong one.' : 'Each port can only connect to one device.'
         }`,
         nodeIds: a.nodeIds,

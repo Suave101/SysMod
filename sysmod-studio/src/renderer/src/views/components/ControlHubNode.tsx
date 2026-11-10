@@ -1,6 +1,6 @@
 import React from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
-import { Cpu, Zap, Trash2, Power, Wifi, ShieldAlert, Radio, Lock, Share2, Wind } from 'lucide-react';
+import { Cpu, Zap, Trash2, Power, Wifi, ShieldAlert, Radio, Lock, Share2, Wind, Network } from 'lucide-react';
 import { useRobotStore, FRCNodeData } from '../store/useRobotStore';
 import { NodeNumberField } from './NodeFields';
 
@@ -56,7 +56,7 @@ export const ControlHubNode: React.FC<NodeProps> = ({ id, data }) => {
               <Lock className="w-3 h-3 text-amber-400 shrink-0" />
               <div>
                 <span className="font-bold block">RIO Port (Dedicated)</span>
-                <span className="text-slate-500 text-[8px]">RoboRIO Uplink + Passive PoE</span>
+                <span className="text-slate-500 text-[8px]">SystemCore / roboRIO Only</span>
               </div>
             </div>
             <span className="text-amber-400 font-bold text-[8px] bg-amber-950/60 px-1 py-0.5 rounded border border-amber-500/30">
@@ -100,6 +100,14 @@ export const ControlHubNode: React.FC<NodeProps> = ({ id, data }) => {
               id="eth-aux2"
               className="w-3.5 h-3.5 !bg-emerald-500 !border-2 !border-slate-950 rounded-full !right-[-12px]"
             />
+          </div>
+
+          <div className="flex items-center justify-between text-[9px] font-mono text-slate-500 bg-slate-950/90 px-2.5 py-1.5 rounded border border-slate-700/60">
+            <div>
+              <span className="font-bold block text-slate-400">DS Port</span>
+              <span className="text-[8px]">Driver Station tether, pits only</span>
+            </div>
+            <span className="text-[8px]">Not a robot device</span>
           </div>
         </div>
       </div>
@@ -161,7 +169,7 @@ export const ControlHubNode: React.FC<NodeProps> = ({ id, data }) => {
           <div className="flex items-center justify-between text-[9px] font-mono text-indigo-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-indigo-500/30 relative">
             <Handle type="target" position={Position.Left} id="usb-in" className="w-3.5 h-3.5 !bg-indigo-500 !border-2 !border-slate-950 rounded-full !left-[-12px]" />
             <span className="font-bold">USB Connection</span>
-            <span className="text-slate-500 text-[8px]">roboRIO USB</span>
+            <span className="text-slate-500 text-[8px]">Controller USB</span>
           </div>
 
           <div className="flex items-center justify-between text-[9px] font-mono text-amber-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-amber-500/40 relative">
@@ -288,7 +296,112 @@ export const ControlHubNode: React.FC<NodeProps> = ({ id, data }) => {
     );
   }
 
-  // ── roboRIO 2.0 Main Controller ──
+  // ── Ethernet Switch: one uplink, four device ports ──
+  if (deviceType === 'NetworkSwitch') {
+    const used = edges.filter((e) => e.source === id && e.sourceHandle === 'eth-out').length;
+    return (
+      <div className="relative min-w-[260px] bg-slate-900 border-2 border-emerald-500/60 rounded-xl p-3.5 shadow-2xl">
+        <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <Network className="w-5 h-5 text-emerald-400" />
+            <div>
+              <h3 className="font-mono text-xs font-black text-slate-100">{nodeData.label || id}</h3>
+              <span className="text-[9px] font-mono text-emerald-400 uppercase tracking-wider block font-bold">Ethernet Switch (5-Port)</span>
+            </div>
+          </div>
+          <button onClick={() => removeNode(id)} className="text-slate-500 hover:text-red-400 transition">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+        <div className="mt-2.5 space-y-2">
+          <div className="flex items-center justify-between text-[9px] font-mono text-red-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-red-500/30 relative">
+            <Handle type="target" position={Position.Left} id="pwr-12v-in" className="w-3.5 h-3.5 !bg-red-500 !border-2 !border-slate-950 rounded-full !left-[-12px]" />
+            <span className="font-bold">12V Power In</span>
+            <span className="text-amber-400 font-bold text-[8px]">{nodeData.powerChannel || 'Unassigned'}</span>
+          </div>
+          <div className="flex items-center justify-between text-[9px] font-mono text-emerald-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-emerald-500/40 relative">
+            <Handle type="target" position={Position.Left} id="eth-in" className="w-3.5 h-3.5 !bg-emerald-500 !border-2 !border-slate-950 rounded-full !left-[-12px]" />
+            <span className="font-bold">Uplink</span>
+            <span className="text-slate-500 text-[8px]">From Radio AUX</span>
+          </div>
+          <div className="flex items-center justify-between text-[9px] font-mono text-emerald-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-emerald-500/40 relative">
+            <span className="font-bold">Device Ports</span>
+            <span className="text-emerald-300 text-[8px]">{used}/4 in use</span>
+            <Handle type="source" position={Position.Right} id="eth-out" className="w-3.5 h-3.5 !bg-emerald-500 !border-2 !border-slate-950 rounded-full !right-[-12px]" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── SystemCore: the robot controller from the 2027 season ──
+  if (deviceType === 'SystemCore') {
+    const smartIoUsed = edges.filter((e) => (e.target === id && e.targetHandle === 'dio-in') || (e.source === id && e.sourceHandle === 'pwm-out')).length;
+    const row = 'flex items-center justify-between text-[9px] font-mono bg-slate-950/90 px-2.5 py-1.5 rounded border relative';
+    return (
+      <div className="relative min-w-[300px] bg-slate-900 border-2 border-indigo-400 rounded-xl p-4 shadow-2xl">
+        <div className="flex items-center justify-between pb-2.5 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <Cpu className="w-5 h-5 text-indigo-300" />
+            <div>
+              <h3 className="font-mono text-xs font-black text-slate-100">{nodeData.label || id}</h3>
+              <span className="text-[9px] font-mono text-indigo-300 uppercase tracking-wider block font-bold">SystemCore Controller · 2027+</span>
+            </div>
+          </div>
+          <button onClick={() => removeNode(id)} className="text-slate-500 hover:text-red-400 transition">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <div className="mt-3 space-y-2">
+          <div className={`${row} text-red-400 border-red-500/40`}>
+            <Handle type="target" position={Position.Left} id="pwr-12v-in" className="w-3.5 h-3.5 !bg-red-500 !border-2 !border-slate-950 rounded-full !left-[-12px]" />
+            <span className="font-bold">12V Power In</span>
+            <span className="text-amber-400 font-bold text-[8px]">{nodeData.powerChannel || 'Unassigned'}</span>
+          </div>
+
+          <div className={`${row} text-yellow-400 border-yellow-500/40`}>
+            <span className="font-bold">RSL Port</span>
+            <span className="text-yellow-300 text-[8px]">To RSL</span>
+            <Handle type="source" position={Position.Right} id="rsl-out" className="w-3.5 h-3.5 !bg-yellow-400 !border-2 !border-slate-950 rounded-full !right-[-12px]" />
+          </div>
+
+          {[0, 1, 2, 3, 4].map((bus) => (
+            <div key={bus} className={`${row} text-amber-400 border-amber-500/40 py-1`}>
+              <span className="font-bold">CAN {bus}</span>
+              <span className="text-amber-300 text-[8px]">CAN FD · 120Ω built in</span>
+              <Handle type="source" position={Position.Right} id={`can-${bus}`} className="w-3 h-3 !bg-amber-400 !border-2 !border-slate-950 rounded-full !right-[-11px]" />
+            </div>
+          ))}
+
+          <div className={`${row} text-emerald-400 border-emerald-500/30`}>
+            <span className="font-bold">Ethernet Port</span>
+            <span className="text-slate-500 text-[8px]">To Radio RIO Port</span>
+            <Handle type="source" position={Position.Right} id="eth-out" className="w-3.5 h-3.5 !bg-emerald-500 !border-2 !border-slate-950 rounded-full !right-[-12px]" />
+          </div>
+
+          <div className={`${row} text-purple-400 border-purple-500/30`}>
+            <Handle type="target" position={Position.Left} id="dio-in" className="w-3.5 h-3.5 !bg-purple-500 !border-2 !border-slate-950 rounded-full !left-[-12px]" />
+            <span className="font-bold">Smart I/O In</span>
+            <span className="text-purple-300 text-[8px]">{smartIoUsed}/6 ports (0–5)</span>
+            <span className="font-bold">PWM Out</span>
+            <Handle type="source" position={Position.Right} id="pwm-out" className="w-3.5 h-3.5 !bg-purple-400 !border-2 !border-slate-950 rounded-full !right-[-12px]" />
+          </div>
+
+          <div className={`${row} text-indigo-400 border-indigo-500/30`}>
+            <Handle type="target" position={Position.Left} id="i2c-in" className="w-3.5 h-3.5 !bg-indigo-400 !border-2 !border-slate-950 rounded-full !left-[-12px]" />
+            <span className="font-bold">I2C (x2)</span>
+            <span className="font-bold">USB Host (x4)</span>
+            <Handle type="source" position={Position.Right} id="usb-out" className="w-3.5 h-3.5 !bg-indigo-500 !border-2 !border-slate-950 rounded-full !right-[-12px]" />
+          </div>
+
+          <p className="text-[8px] font-mono text-slate-500 px-1">Built-in IMU · no MXP port</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── roboRIO 2.0 Main Controller (2026 and earlier) ──
   return (
     <div className="relative min-w-[290px] bg-slate-900 border-2 border-indigo-500/80 rounded-xl p-4 shadow-2xl">
       <div className="flex items-center justify-between pb-2.5 border-b border-slate-800">
@@ -297,7 +410,7 @@ export const ControlHubNode: React.FC<NodeProps> = ({ id, data }) => {
           <div>
             <h3 className="font-mono text-xs font-black text-slate-100">{nodeData.label || id}</h3>
             <span className="text-[9px] font-mono text-indigo-400 uppercase tracking-wider block font-bold">
-              roboRIO 2.0 Controller
+              roboRIO 2.0 Controller · 2026 and earlier
             </span>
           </div>
         </div>
@@ -326,7 +439,6 @@ export const ControlHubNode: React.FC<NodeProps> = ({ id, data }) => {
         </div>
 
         <div className="flex items-center justify-between text-[9px] font-mono text-emerald-400 bg-slate-950/90 px-2.5 py-1.5 rounded border border-emerald-500/30 relative">
-          <Handle type="target" position={Position.Left} id="eth-in" className="w-3.5 h-3.5 !bg-emerald-500 !border-2 !border-slate-950 rounded-full !left-[-12px]" />
           <span className="font-bold">Ethernet Port</span>
           <span className="text-slate-500 text-[8px]">To Radio RIO Port</span>
           <Handle type="source" position={Position.Right} id="eth-out" className="w-3.5 h-3.5 !bg-emerald-500 !border-2 !border-slate-950 rounded-full !right-[-12px]" />

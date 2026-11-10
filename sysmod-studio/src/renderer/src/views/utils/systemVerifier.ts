@@ -2,6 +2,7 @@ import { Node, Edge } from '@xyflow/react';
 import { FRCEdgeData, FRCNodeData } from '../store/useRobotStore';
 import { getWireFamily, groupWiresByNetwork, isMismatchedWire, WireFamily } from './aadlGenerator';
 import { analyzeHardware, HardwareAnalysis, HardwareIssue } from './hardwareValidation';
+import { CONTROLLER_CAN_HANDLES, CONTROLLER_TYPES, CONTROLLERS, findController } from './controllers';
 
 export interface VerificationIssue {
   id: string;
@@ -23,36 +24,28 @@ const SINGLE_INSTANCE_DEVICES: Record<string, string> = {
   Battery12V: '12V Battery',
   MainBreaker120A: '120A Main Breaker',
   PDH: 'Power Distribution Hub',
-  roboRIO: 'roboRIO',
   RadioSwitch: 'FRC Radio',
 };
 
 const MOTOR_DEVICES = ['KrakenX60', 'KrakenX44', 'Falcon500', 'SparkMaxNEO', 'NEOVortex', 'NEO550', 'BrushedController'];
-const ETHERNET_DEVICES = ['Limelight', 'Coprocessor'];
-const POWERED_DEVICES = [...MOTOR_DEVICES, ...ETHERNET_DEVICES, 'roboRIO', 'RadioSwitch', 'PneumaticsHub', 'BuckConverter', 'VRM', 'MPM'];
+const ETHERNET_DEVICES = ['Limelight', 'Coprocessor', 'NetworkSwitch'];
+const POWERED_DEVICES = [...MOTOR_DEVICES, ...ETHERNET_DEVICES, 'SystemCore', 'roboRIO', 'RadioSwitch', 'PneumaticsHub', 'BuckConverter', 'VRM', 'MPM'];
 const CAN_DEVICES = [...MOTOR_DEVICES, 'CANcoder', 'Pigeon2', 'TimeOfFlight', 'PneumaticsHub'];
 const CAN_FD_DEVICES = ['KrakenX60', 'KrakenX44', 'Falcon500', 'CANcoder', 'Pigeon2'];
 const PNEUMATIC_DEVICES = ['Compressor', 'SolenoidValve', 'PressureSwitch'];
 const MAX_SOLENOID_CHANNELS = 16;
 
-// Devices that wire to a roboRIO header or a coprocessor rather than a bus
+// Devices that wire to a controller header or a coprocessor rather than a bus
 const SIGNAL_DEVICES: Record<string, { family: WireFamily; port: string }> = {
-  LimitSwitch: { family: 'dio', port: 'a roboRIO DIO port' },
-  BeamBreak: { family: 'dio', port: 'a roboRIO DIO port' },
-  ThroughBore: { family: 'dio', port: 'a roboRIO DIO port' },
-  PWMServo: { family: 'pwm', port: 'a roboRIO PWM port' },
-  ColorSensor: { family: 'i2c', port: 'the roboRIO I2C port' },
+  LimitSwitch: { family: 'dio', port: 'a controller DIO or Smart I/O port' },
+  BeamBreak: { family: 'dio', port: 'a controller DIO or Smart I/O port' },
+  ThroughBore: { family: 'dio', port: 'a controller DIO or Smart I/O port' },
+  PWMServo: { family: 'pwm', port: 'a controller PWM or Smart I/O port' },
+  ColorSensor: { family: 'i2c', port: 'a controller I2C port' },
   NavX2: { family: 'mxp', port: 'the roboRIO MXP port' },
-  CANivore: { family: 'usb', port: 'a roboRIO USB port' },
+  CANivore: { family: 'usb', port: 'a controller USB port' },
   PhotonVision: { family: 'usb', port: 'a coprocessor USB port' },
 };
-
-// roboRIO headers with a fixed number of pins
-const ROBORIO_PORT_LIMITS: { handle: string; name: string; limit: number }[] = [
-  { handle: 'dio-in', name: 'DIO', limit: 10 },
-  { handle: 'pwm-out', name: 'PWM', limit: 10 },
-  { handle: 'usb-out', name: 'USB', limit: 2 },
-];
 
 export function verifySystemProperties(
   nodes: Node<FRCNodeData>[],
@@ -74,7 +67,9 @@ export function verifySystemProperties(
   const batteryNode = nodes.find((n) => n.data?.deviceType === 'Battery12V');
   const mainBreakerNode = nodes.find((n) => n.data?.deviceType === 'MainBreaker120A');
   const pdhNode = nodes.find((n) => n.data?.deviceType === 'PDH');
-  const rioNode = nodes.find((n) => n.data?.deviceType === 'roboRIO');
+  // SystemCore from 2027, or a roboRIO for 2026 and earlier. Rules below apply to whichever is there.
+  const controller = findController(nodes);
+  const rioNode = controller?.node;
   const radioNode = nodes.find((n) => n.data?.deviceType === 'RadioSwitch');
   const rslNode = nodes.find((n) => n.data?.deviceType === 'RSL');
 
@@ -85,7 +80,7 @@ export function verifySystemProperties(
         id: 'illegal-radio-can',
         severity: 'error',
         title: 'Illegal CAN Bus Connection at Radio',
-        message: 'The CAN bus CANNOT originate or connect to the FRC Radio! Standard CAN originates at the roboRIO and CTRE CAN FD originates at the CANivore.',
+        message: 'The CAN bus CANNOT originate or connect to the FRC Radio! Standard CAN starts at the robot controller (SystemCore or roboRIO) and CTRE CAN FD can also start at a CANivore.',
         nodeIds: [radioNode.id],
       });
     }
@@ -101,11 +96,12 @@ export function verifySystemProperties(
     if (rioPortEdge) {
       const connectedNodeId = rioPortEdge.source === radioNode.id ? rioPortEdge.target : rioPortEdge.source;
       if (connectedNodeId !== rioNode?.id) {
+        // Any second controller is reported below; this is about anything else on the RIO port
         issues.push({
           id: 'radio-rio-port-violation',
           severity: 'error',
           title: 'Radio RIO Port Violation',
-          message: 'The Radio RIO port is strictly reserved for the roboRIO controller! Non-roboRIO devices must connect to the AUX port.',
+          message: 'The Radio RIO port is reserved for the robot controller (SystemCore or roboRIO). Other devices connect to an AUX port or an Ethernet switch.',
           nodeIds: [radioNode.id, connectedNodeId],
         });
       }
@@ -135,27 +131,28 @@ export function verifySystemProperties(
 
   // ── Rule 4: Mandatory Robot Signal Light (RSL) ──
   if (!rioNode) {
-    issues.push({ id: 'no-roborio', severity: 'error', title: 'Missing roboRIO 2.0', message: 'No roboRIO controller found.' });
+    issues.push({ id: 'no-controller', severity: 'error', title: 'Missing Robot Controller', message: 'Add a SystemCore (2027 season and later) or a roboRIO 2.0 (2026 and earlier).' });
   } else {
     if (!rslNode) {
-      issues.push({ id: 'no-rsl', severity: 'error', title: 'Missing Robot Signal Light (RSL)', message: 'FRC Rules require an approved RSL (Allen-Bradley 855PB-B12ME522 or AndyMark am-3583) connected to the roboRIO RSL header.' });
+      issues.push({ id: 'no-rsl', severity: 'error', title: 'Missing Robot Signal Light (RSL)', message: 'FRC Rules require an approved RSL (Allen-Bradley 855PB-B12ME522 or AndyMark am-3583) connected to the robot controller’s RSL port.' });
     } else {
       const rslConnected = edges.some((e) => e.source === rioNode.id && e.target === rslNode.id && e.sourceHandle === 'rsl-out');
       if (!rslConnected) {
-        issues.push({ id: 'rsl-unconnected', severity: 'error', title: 'Unconnected RSL', message: 'Robot Signal Light must connect to the roboRIO dedicated "rsl-out" header.' });
+        issues.push({ id: 'rsl-unconnected', severity: 'error', title: 'Unconnected RSL', message: 'The Robot Signal Light must connect to the robot controller’s RSL port.' });
       }
     }
   }
 
   // ── Rule 5: CAN Bus 120Ω Termination ──
   if (rioNode && pdhNode) {
-    const canStart = edges.some((e) => e.source === rioNode.id && e.sourceHandle === 'can-start');
+    const canStart = edges.some((e) => e.source === rioNode.id && CONTROLLER_CAN_HANDLES.includes(e.sourceHandle || ''));
     const canTerm = edges.some((e) => e.target === pdhNode.id && e.targetHandle === 'can-term');
 
     if (!canStart) {
-      issues.push({ id: 'can-no-start', severity: 'error', title: 'CAN Bus Not Originated', message: 'The CAN bus must start at the roboRIO "can-start" port.' });
+      issues.push({ id: 'can-no-start', severity: 'error', title: 'CAN Bus Not Originated', message: 'The CAN bus must start at a CAN port on the robot controller.' });
     }
-    if (!canTerm) {
+    // SystemCore has five buses, each terminated at its far end, so the PDH is optional there (see Rule 10)
+    if (!canTerm && controller?.type === 'roboRIO') {
       issues.push({ id: 'can-no-term', severity: 'error', title: 'CAN Bus Unterminated (120Ω Missing)', message: 'The CAN bus must terminate at the REV PDH built-in 120Ω resistor.' });
     }
   }
@@ -213,7 +210,8 @@ export function verifySystemProperties(
     });
   });
 
-  if (rioNode) {
+  // The roboRIO must be on a low-current channel. SystemCore's power rules come with the 2027 game manual.
+  if (rioNode && controller?.type === 'roboRIO') {
     wiresInto(rioNode.id, 'power').forEach((feed) => {
       if ((feed.data as FRCEdgeData | undefined)?.channelType !== 'low') {
         issues.push({ id: `rio-power-${feed.id}`, severity: 'error', title: 'roboRIO Power Channel Violation', message: 'The roboRIO must be powered from a PDH low-current channel (Ports 20–22).', nodeIds: [rioNode.id] });
@@ -233,9 +231,18 @@ export function verifySystemProperties(
 
   if (rioNode && pdhNode) {
     const rioNetwork = canNetworks.find((network) => network.some((e) => e.source === rioNode.id && e.sourceHandle === 'can-start'));
+    if (controller?.type === 'SystemCore') {
+      // Each SystemCore bus has 120Ω built in at the controller and needs another at its far end
+      CONTROLLERS.SystemCore.canBuses.forEach(({ handle, label }) => {
+        const network = canNetworks.find((n) => n.some((e) => e.source === rioNode.id && e.sourceHandle === handle));
+        if (network && !network.some((e) => e.target === pdhNode.id && e.targetHandle === 'can-term')) {
+          issues.push({ id: `can-term-${handle}`, severity: 'info', title: `Terminate ${label}`, message: `SystemCore ${label} needs a 120Ω terminator at the far end of its chain. End it at the PDH, or add a terminator the diagram can't show.`, nodeIds: [rioNode.id] });
+        }
+      });
+    }
     const isTerminated = rioNetwork?.some((e) => e.target === pdhNode.id && e.targetHandle === 'can-term');
     if (rioNetwork && edges.some((e) => e.target === pdhNode.id && e.targetHandle === 'can-term') && !isTerminated) {
-      issues.push({ id: 'can-broken-chain', severity: 'error', title: 'Broken CAN Chain', message: 'The roboRIO CAN start and the PDH 120Ω terminator are not on the same chain. Every link between them must be wired.', nodeIds: [rioNode.id, pdhNode.id] });
+      issues.push({ id: 'can-broken-chain', severity: 'error', title: 'Broken CAN Chain', message: 'The controller’s CAN start and the PDH 120Ω terminator are not on the same chain. Every link between them must be wired.', nodeIds: [rioNode.id, pdhNode.id] });
     }
   }
 
@@ -245,8 +252,10 @@ export function verifySystemProperties(
     }
   });
 
+  // A branch is two wires out of one CAN port; SystemCore's five ports each start their own bus
   nodes.filter((n) => n.data?.deviceType !== 'CANHub').forEach((node) => {
-    if (edges.filter((e) => e.source === node.id && getWireFamily(e.sourceHandle) === 'can').length > 1) {
+    const canOut = edges.filter((e) => e.source === node.id && getWireFamily(e.sourceHandle) === 'can');
+    if (new Set(canOut.map((e) => e.sourceHandle)).size < canOut.length) {
       issues.push({ id: `can-branch-${node.id}`, severity: 'warning', title: 'CAN Bus Branch', message: `${nodeName(node)} splits the CAN bus. CAN should be a single daisy chain unless it passes through a CAN hub.`, nodeIds: [node.id] });
     }
   });
@@ -302,13 +311,13 @@ export function verifySystemProperties(
   if (radioNode && rioNode) {
     const radioLinked = edges.some((e) => e.source === rioNode.id && e.target === radioNode.id && e.targetHandle === 'eth-rio');
     if (!radioLinked) {
-      issues.push({ id: 'radio-rio-unlinked', severity: 'error', title: 'roboRIO Not Linked To Radio', message: 'Connect the roboRIO Ethernet port to the Radio RIO port, or the robot cannot talk to the field.', nodeIds: [rioNode.id, radioNode.id] });
+      issues.push({ id: 'radio-rio-unlinked', severity: 'error', title: 'Controller Not Linked To Radio', message: 'Connect the robot controller’s Ethernet port to the Radio RIO port, or the robot cannot talk to the field.', nodeIds: [rioNode.id, radioNode.id] });
     }
   }
 
   nodesOfType(...ETHERNET_DEVICES).forEach((node) => {
     if (!touchesFamily(node.id, 'eth')) {
-      issues.push({ id: `eth-unconnected-${node.id}`, severity: 'warning', title: 'Device Not On Network', message: `${nodeName(node)} has no Ethernet connection, so the roboRIO cannot read from it.`, nodeIds: [node.id] });
+      issues.push({ id: `eth-unconnected-${node.id}`, severity: 'warning', title: 'Device Not On Network', message: `${nodeName(node)} has no Ethernet connection, so the robot controller cannot read from it.`, nodeIds: [node.id] });
     }
   });
 
@@ -321,14 +330,33 @@ export function verifySystemProperties(
     });
   });
 
-  if (rioNode) {
-    ROBORIO_PORT_LIMITS.forEach(({ handle, name, limit }) => {
-      const used = edges.filter((e) => (e.target === rioNode.id && e.targetHandle === handle) || (e.source === rioNode.id && e.sourceHandle === handle)).length;
+  if (rioNode && controller) {
+    controller.spec.portLimits.forEach(({ handles, name, limit }) => {
+      const used = edges.filter((e) => (e.target === rioNode.id && handles.includes(e.targetHandle || '')) || (e.source === rioNode.id && handles.includes(e.sourceHandle || ''))).length;
       if (used > limit) {
-        issues.push({ id: `rio-limit-${handle}`, severity: 'error', title: `Too Many ${name} Devices`, message: `The roboRIO has ${limit} ${name} ports, but ${used} devices are wired to them.`, nodeIds: [rioNode.id] });
+        issues.push({ id: `rio-limit-${name}`, severity: 'error', title: `Too Many ${name} Devices`, message: `The ${controller.spec.name} has ${limit} ${name} ports, but ${used} devices are wired to them.`, nodeIds: [rioNode.id] });
       }
     });
   }
+
+  // ── Rule 15: Controller Generation ──
+  const controllers = nodesOfType(...CONTROLLER_TYPES);
+  if (controllers.length > 1) {
+    issues.push({ id: 'multiple-controllers', severity: 'error', title: 'More Than One Robot Controller', message: 'A robot has one controller: a SystemCore (2027 and later) or a roboRIO (2026 and earlier), not both.', nodeIds: controllers.map((n) => n.id) });
+  }
+  if (controller?.type === 'roboRIO') {
+    issues.push({ id: 'legacy-roborio', severity: 'info', title: 'roboRIO Is For 2026 And Earlier', message: 'Starting with the 2027 season, FRC robots use SystemCore, and WPILib 2027 no longer supports the roboRIO. Keep the roboRIO for 2026 robots and offseason events.', nodeIds: [controller.node.id] });
+  }
+  if (controller && !controller.spec.hasMxp) {
+    nodesOfType('NavX2').forEach((node) => {
+      issues.push({ id: `no-mxp-${node.id}`, severity: 'error', title: 'No MXP Port On SystemCore', message: `SystemCore has no MXP port, so ${nodeName(node)} can't plug in. Use SystemCore's built-in IMU or a CAN IMU such as the Pigeon 2.0.`, nodeIds: [node.id] });
+    });
+  }
+  nodesOfType('NetworkSwitch').forEach((node) => {
+    if (wiresInto(node.id, 'eth').length === 0) {
+      issues.push({ id: `switch-no-uplink-${node.id}`, severity: 'warning', title: 'Ethernet Switch Not Connected', message: `Connect the uplink of ${nodeName(node)} to a radio AUX port, or nothing on it can reach the robot controller.`, nodeIds: [node.id] });
+    }
+  });
 
   // ── Rules 15 to 17: Hardware Validation Engine (CAN load, current limits, port and ID conflicts) ──
   issues.push(...hardware.issues);

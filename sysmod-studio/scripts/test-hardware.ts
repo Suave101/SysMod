@@ -5,6 +5,7 @@
 import { analyzeHardware, CAN_FRAMES_PER_SECOND, HardwareAnalysis } from '../src/renderer/src/views/utils/hardwareValidation';
 import { verifySystemProperties } from '../src/renderer/src/views/utils/systemVerifier';
 import { generateJavaCode, generatePythonCode } from '../src/renderer/src/views/utils/codeGenerators';
+import { connectionProblem } from '../src/renderer/src/views/utils/connectionRules';
 
 type TestNode = Parameters<typeof analyzeHardware>[0][number];
 type TestEdge = Parameters<typeof analyzeHardware>[1][number];
@@ -123,6 +124,55 @@ check('Java sets the Talon FX supply limit from the diagram', java.includes('pri
 check('Java sets SPARK smart current limits with REVLib 2025', java.includes('new SparkMax(4, MotorType.kBrushless)') && java.includes('maxConfig.smartCurrentLimit(30);') && java.includes('new SparkFlex(5, MotorType.kBrushless)') && java.includes('flex.configure(flexConfig, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);'), java);
 check('Java imports only what it uses', java.includes('import com.revrobotics.spark.config.SparkFlexConfig;') && !java.includes('Pigeon2') && !java.includes('CANSparkMax'), java);
 check('CAN ID 0 is kept, not replaced with 1', java.includes('new TalonFX(0)'), java);
+
+// ── Wires that can't be drawn ──
+const plug = (source: string, sourceHandle: string, target: string, targetHandle: string) => ({ source, sourceHandle, target, targetHandle });
+check('power can’t plug into a CAN port', /power port can’t connect to a CAN port/.test(connectionProblem(plug('pdh', 'pwr-high-out', 'm1', 'can-in'), base, baseWires) || ''));
+check('CAN into CAN is allowed', connectionProblem(plug('m1', 'can-out', 'm2', 'can-in'), base, []) === undefined);
+check('a component can’t be wired to itself', !!connectionProblem(plug('m1', 'can-out', 'm1', 'can-in'), base, []));
+
+const net = [node('radio', 'RadioSwitch'), node('ll1', 'Limelight'), node('ll2', 'Limelight'), node('sw', 'NetworkSwitch'), ...[1, 2, 3, 4, 5].map((i) => node(`cam${i}`, 'Coprocessor'))];
+const auxUsed = [wire('e1', 'radio', 'eth-aux', 'll1', 'eth-in')];
+check('an Ethernet port holds one cable', /already has a cable/.test(connectionProblem(plug('radio', 'eth-aux', 'll2', 'eth-in'), net, auxUsed) || ''));
+check('a device’s Ethernet port holds one cable', !!connectionProblem(plug('radio', 'eth-aux2', 'll1', 'eth-in'), net, auxUsed));
+const switchFull = [1, 2, 3, 4].map((i) => wire(`s${i}`, 'sw', 'eth-out', `cam${i}`, 'eth-in'));
+check('a switch takes four devices', connectionProblem(plug('sw', 'eth-out', 'cam4', 'eth-in'), net, switchFull.slice(0, 3)) === undefined);
+check('a fifth device on a switch is refused', /All 4 Ethernet ports/.test(connectionProblem(plug('sw', 'eth-out', 'cam5', 'eth-in'), net, switchFull) || ''));
+
+// ── SystemCore ──
+const core = [
+  node('battery', 'Battery12V'), node('breaker', 'MainBreaker120A'), node('pdh', 'PDH'), node('core', 'SystemCore'), node('radio', 'RadioSwitch'), node('rsl', 'RSL'),
+  node('k1', 'KrakenX60', { canId: 1 }), node('k2', 'KrakenX60', { canId: 1 }),
+];
+const coreWires = [
+  wire('a', 'battery', 'pwr-battery-out', 'breaker', 'pwr-battery-in'), wire('b', 'breaker', 'pwr-pdh-out', 'pdh', 'pwr-12v-in'),
+  pdhWire('p20', 'core', 'low', 20), pdhWire('p21', 'radio', 'low', 21), pdhWire('p0', 'k1', 'high', 0), pdhWire('p1', 'k2', 'high', 1),
+  wire('r', 'core', 'rsl-out', 'rsl', 'rsl-in'), wire('eth', 'core', 'eth-out', 'radio', 'eth-rio'),
+  wire('c0', 'core', 'can-0', 'k1', 'can-in'), wire('t0', 'k1', 'can-out', 'pdh', 'can-term'),
+  wire('c1', 'core', 'can-1', 'k2', 'can-in'),
+];
+const coreHw = analyzeHardware(core, coreWires);
+check('SystemCore buses are separate and named', coreHw.canBuses.map((b) => b.name).sort().join() === 'SystemCore CAN 0,SystemCore CAN 1', coreHw.canBuses.map((b) => b.name));
+check('the same CAN ID on two different SystemCore buses is fine', !coreHw.issues.some((i) => i.title === 'Duplicate CAN ID'), issueIds(coreHw));
+const coreReport = verifySystemProperties(core, coreWires);
+const coreIds = coreReport.issues.map((i) => i.id);
+check('a wired SystemCore robot has no controller errors', !coreReport.issues.some((i) => i.severity === 'error'), coreReport.issues.filter((i) => i.severity === 'error'));
+check('a SystemCore bus that doesn’t end at the PDH is reminded to terminate', coreIds.includes('can-term-can-1') && !coreIds.includes('can-term-can-0'), coreIds);
+check('SystemCore isn’t flagged as legacy', !coreIds.includes('legacy-roborio'));
+
+const smartIo = analyzeHardware([...core, node('ls', 'LimitSwitch', { dioPort: 2 }), node('servo', 'PWMServo', { pwmPort: 2 })], coreWires);
+check('DIO and PWM share SystemCore’s Smart I/O numbers', smartIo.issues.some((i) => i.title === 'Duplicate Smart I/O Port'), issueIds(smartIo));
+const rioIo = analyzeHardware([...base, node('ls', 'LimitSwitch', { dioPort: 2 }), node('servo', 'PWMServo', { pwmPort: 2 })], baseWires);
+check('roboRIO DIO 2 and PWM 2 are different ports', !rioIo.issues.some((i) => i.title.startsWith('Duplicate')), issueIds(rioIo));
+const sio6 = analyzeHardware([...core, node('ls', 'LimitSwitch', { dioPort: 6 })], coreWires);
+check('Smart I/O 6 is out of range', sio6.issues.some((i) => i.id === 'id-dio-range-ls' && i.title === 'Invalid Smart I/O Port'), issueIds(sio6));
+
+const sensors7 = Array.from({ length: 7 }, (_, i) => node(`d${i}`, 'LimitSwitch', { dioPort: i % 6 }));
+const tooMany = verifySystemProperties([...core, ...sensors7], [...coreWires, ...sensors7.map((s, i) => wire(`dw${i}`, s.id, 'dio-out', 'core', 'dio-in'))]);
+check('more than 6 Smart I/O devices is an error', tooMany.issues.some((i) => i.id === 'rio-limit-Smart I/O'), tooMany.issues.map((i) => i.id));
+check('a navX can’t plug into SystemCore', verifySystemProperties([...core, node('navx', 'NavX2')], coreWires).issues.some((i) => i.id === 'no-mxp-navx'));
+check('two controllers is an error', verifySystemProperties([...core, node('rio', 'roboRIO')], coreWires).issues.some((i) => i.id === 'multiple-controllers'));
+check('a roboRIO robot gets the 2027 notice', verifySystemProperties(base, baseWires).issues.some((i) => i.id === 'legacy-roborio' && i.severity === 'info'));
 
 console.log(failures ? `${failures} FAILED` : 'All hardware checks passed');
 process.exit(failures ? 1 : 0);

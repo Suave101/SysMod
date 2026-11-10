@@ -84,7 +84,7 @@ The jar and the runtime go in `sysmod-studio/resources/jkind/`, which electron-b
 ## How it was checked
 
 - JKind accepted the generated Lustre unchanged and gave the expected answers. A correct power chain was proved. Lowering the battery minimum gave a counterexample showing the motor supply below brownout.
-- `npm run test:proofs` proves all 9 standard obligations on a fully wired robot. It confirms that unpowering the roboRIO makes the servo's assumption fail, and that a student lemma is proved from the standard contracts.
+- `npm run test:proofs` proves all 9 standard obligations on a fully wired robot. It confirms that unpowering the roboRIO makes the servo's assumption fail, that a student lemma is proved from the standard contracts, and that the same robot built around a SystemCore proves too.
 - Clicking **Prove contracts** in the real Electron window ran through IPC to the bundled JKind and showed results and a counterexample table.
 - The proof tests also passed with no Java on the PATH and no `JAVA_HOME`.
 

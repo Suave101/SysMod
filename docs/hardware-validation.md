@@ -20,6 +20,37 @@ These run alongside the FRC wiring rules and the formal proofs. Like the wiring 
 
 Problems that were already there when you opened the diagram don't pop up. They're still on the badges and in the panels.
 
+## Wires you can't draw
+
+Some wiring mistakes are impossible on a real robot, so the diagram won't let you make them at all. While you drag a wire, it turns red over a port it can't connect to, and letting go explains why.
+
+| Blocked | Why |
+|---|---|
+| Different kinds of port, like power into a CAN port | The plugs and signals don't match |
+| A second cable in an Ethernet port | Every Ethernet jack holds one cable. Ethernet doesn't daisy-chain, so each camera or coprocessor needs its own radio AUX port or a port on an Ethernet switch. |
+| A fifth device on an Ethernet switch | The switch has one uplink to the radio and four device ports |
+| A component wired to itself | |
+
+The VH-109 radio has four Ethernet ports. **RIO** is for the robot controller, **AUX1** and **AUX2** take one device each, and **DS** is only for tethering a Driver Station in the pits. To connect more than two devices, wire an **Ethernet switch** to an AUX port.
+
+## SystemCore and roboRIO
+
+SystemCore replaces the roboRIO as the FRC robot controller starting with the 2027 season. SysMod supports both. Use **SystemCore** for 2027 robots, and the **roboRIO 2.0** for 2026 robots and offseason events.
+
+| | SystemCore | roboRIO 2.0 |
+|---|---|---|
+| CAN | 5 buses (CAN 0–4), CAN FD, 120Ω built in | 1 bus |
+| Digital I/O and PWM | 6 shared Smart I/O ports (0–5) | 10 DIO (0–9) and 10 PWM (0–9) |
+| USB | 4 | 2 |
+| I2C | 2 | 1 |
+| IMU | Built in | None, use a Pigeon 2.0 or navX |
+| MXP | None, so a navX2-MXP can't plug in | Yes |
+
+Each SystemCore bus is terminated at the controller, and needs a terminator at its far end too. End one chain at the PDH. For the others, SysMod reminds you to add a terminator, since the diagram can't show one.
+
+!!! note
+    These port counts come from WPILib's 2027 preview documentation. SystemCore's power rules, brownout threshold and price haven't been published yet, so SysMod doesn't check its PDH channel or prove its brownout behavior. These will be added once FIRST releases the official spec sheet and the 2027 game manual at kickoff on January 9, 2027.
+
 ## Editing IDs and limits
 
 You can change these settings right on the component. Click the number and type a new one.
@@ -27,8 +58,8 @@ You can change these settings right on the component. Click the number and type 
 | Setting | On | Range |
 |---|---|---|
 | **CAN ID** | Motor controllers, CAN sensors and the Pneumatic Hub | 0–62 |
-| **Port #** (DIO) | Limit switches, beam breaks and Through Bore encoders | 0–9 |
-| **Port #** (PWM) | PWM servos | 0–9 |
+| **Port #** (DIO) | Limit switches, beam breaks and Through Bore encoders | 0–5 on SystemCore, 0–9 on a roboRIO |
+| **Port #** (PWM) | PWM servos | 0–5 on SystemCore, 0–9 on a roboRIO |
 | **Supply current limit** | Motor controllers, in amps | 0–120 |
 
 New components get the lowest free ID or port, and motor controllers start with a 40 A limit to match their PDH channel.
@@ -54,11 +85,13 @@ SysMod estimates each bus's load from the devices on it:
 | Pigeon 2.0 | 150 |
 | CANcoder | 100 |
 | LaserCAN | 50 |
-| roboRIO | 50 |
+| SystemCore or roboRIO | 50 |
 | REV PDH | 40 |
 | REV Pneumatic Hub | 30 |
 
-On the roboRIO's 1 Mbit/s CAN bus, each frame takes about 150 µs. On a CANivore's CAN FD bus, the data is sent faster, so each frame takes about 45 µs.
+On a 1 Mbit/s CAN bus, each frame takes about 150 µs. On a CANivore's CAN FD bus, the data is sent faster, so each frame takes about 45 µs.
+
+SystemCore has five CAN buses, CAN 0 to CAN 4, and each one is checked separately. Its buses support CAN FD, but SysMod counts them at the classic CAN rate. That's the safe estimate when a bus carries REV devices, which use classic CAN. Spreading devices across buses is the easiest way to lower the load.
 
 | Load | Alert |
 |---|---|
@@ -69,7 +102,7 @@ On the roboRIO's 1 Mbit/s CAN bus, each frame takes about 150 µs. On a CANivore
 To lower the load, slow down status frames you don't use in your robot code, or move CTRE devices to a CANivore.
 
 !!! note
-    These are estimates based on vendor default settings. Your real load depends on how your code configures each device. Check it on the robot with the roboRIO's CAN utilization readout in the Driver Station.
+    These are estimates based on vendor default settings. Your real load depends on how your code configures each device. Check it on the robot with the CAN utilization readout in the Driver Station.
 
 ## Current limits
 
@@ -80,7 +113,9 @@ SysMod adds up the current each part of the robot can draw, following the power 
 | Compressor | 12 A |
 | Limelight | 4 A |
 | Linux coprocessor | 3 A |
+| SystemCore | 3 A (estimate; its rating isn't published yet) |
 | roboRIO 2.0 | 2 A |
+| Ethernet switch | 0.5 A |
 | VH-109 radio | 1.5 A |
 | REV Pneumatic Hub | 0.5 A, plus its compressor and solenoids |
 | Solenoid valve | 0.2 A |
@@ -106,8 +141,9 @@ Short peaks above the main breaker's rating are normal. A robot whose motors cou
 | Check | Rule |
 |---|---|
 | **CAN ID** | Devices of the same kind on the same bus need different IDs. Different kinds can share an ID: a Talon FX and a CANcoder can both be ID 1. SPARK MAX and SPARK Flex count as the same kind. Devices that aren't wired to a bus yet are compared with each other. |
-| **DIO port** | Each roboRIO DIO port (0–9) connects to one device |
-| **PWM port** | Each roboRIO PWM port (0–9) connects to one device |
+| **Smart I/O port** (SystemCore) | SystemCore's 6 Smart I/O ports (0–5) work as DIO or PWM, so sensors and servos share one set of numbers. A limit switch on 2 and a servo on 2 conflict. |
+| **DIO port** (roboRIO) | Each roboRIO DIO port (0–9) connects to one device |
+| **PWM port** (roboRIO) | Each roboRIO PWM port (0–9) connects to one device. DIO 2 and PWM 2 are different ports. |
 | **PDH channel** | Each PDH channel powers one device |
 
 IDs or ports outside their range are also errors.

@@ -1,5 +1,5 @@
 import {
-  Activity, Battery, Camera, Cpu, Eye, Gauge, Lightbulb, LucideIcon, Radio, Server, ShieldAlert, Sliders, Wifi, Wind, Zap,
+  Activity, Battery, Camera, Cpu, Eye, Gauge, Lightbulb, LucideIcon, Network, Radio, Server, ShieldAlert, Sliders, Wifi, Wind, Zap,
 } from 'lucide-react';
 
 export interface HardwareStyle {
@@ -15,7 +15,9 @@ export const HARDWARE_STYLES: Record<string, HardwareStyle> = {
   VRM: { icon: Zap, borderColor: 'border-amber-500/40', iconColor: 'text-amber-400' },
   MPM: { icon: Zap, borderColor: 'border-amber-500/40', iconColor: 'text-amber-400' },
   BuckConverter: { icon: Sliders, borderColor: 'border-sky-500/40', iconColor: 'text-sky-400' },
+  SystemCore: { icon: Cpu, borderColor: 'border-indigo-400/60', iconColor: 'text-indigo-300' },
   roboRIO: { icon: Cpu, borderColor: 'border-indigo-500/40', iconColor: 'text-indigo-400' },
+  NetworkSwitch: { icon: Network, borderColor: 'border-emerald-500/40', iconColor: 'text-emerald-400' },
   RadioSwitch: { icon: Wifi, borderColor: 'border-emerald-500/40', iconColor: 'text-emerald-400' },
   RSL: { icon: Lightbulb, borderColor: 'border-yellow-500/40', iconColor: 'text-yellow-400' },
   CANivore: { icon: Radio, borderColor: 'border-amber-500/40', iconColor: 'text-amber-400' },

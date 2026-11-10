@@ -15,6 +15,7 @@ const REF_DES_PREFIX: Record<string, string> = {
   Battery12V: 'BT',
   MainBreaker120A: 'CB',
   PDH: 'U',
+  SystemCore: 'U',
   roboRIO: 'U',
   RadioSwitch: 'U',
   RSL: 'DS',
@@ -90,10 +91,23 @@ function getDevicePinSpecs(devType: string): DevicePinSpecs {
         { id: 'pwr-switched-out', label: '15A SWITCHED' }
       ]
     },
+    SystemCore: {
+      inputs: [
+        { id: 'pwr-12v-in', label: '12V PWR IN' },
+        { id: 'dio-in', label: 'SMART I/O 0-5 IN' },
+        { id: 'i2c-in', label: 'I2C' },
+      ],
+      outputs: [
+        ...[0, 1, 2, 3, 4].map((n) => ({ id: `can-${n}`, label: `CAN ${n} (FD)` })),
+        { id: 'rsl-out', label: 'RSL OUT' },
+        { id: 'eth-out', label: 'ETHERNET' },
+        { id: 'pwm-out', label: 'SMART I/O PWM' },
+        { id: 'usb-out', label: 'USB HOST' },
+      ],
+    },
     roboRIO: {
       inputs: [
         { id: 'pwr-12v-in', label: '12V PWR IN' },
-        { id: 'eth-in', label: 'ETH IN' },
         { id: 'dio-in', label: 'DIO 0-9' },
         { id: 'i2c-in', label: 'I2C' },
         { id: 'mxp-in', label: 'MXP' }
@@ -101,7 +115,7 @@ function getDevicePinSpecs(devType: string): DevicePinSpecs {
       outputs: [
         { id: 'can-start', label: 'CAN BUS START' },
         { id: 'rsl-out', label: 'RSL OUT' },
-        { id: 'eth-out', label: 'ETH OUT' },
+        { id: 'eth-out', label: 'ETHERNET' },
         { id: 'pwm-out', label: 'PWM 0-9' },
         { id: 'usb-out', label: 'USB HOST' }
       ]
@@ -144,7 +158,9 @@ function calculateEdaLayout(nodes: Node<FRCNodeData>[]): Map<string, Point> {
     VRM: 1,
     MPM: 1,
     BuckConverter: 1,
+    SystemCore: 2,
     roboRIO: 2,
+    NetworkSwitch: 2,
     RadioSwitch: 2,
     CANivore: 2,
     PneumaticsHub: 2,

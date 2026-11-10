@@ -45,7 +45,7 @@ function describePort(port: PortVariable): string {
   return `${meaning[port.family] || 'whether the link is active (true or false)'} at the ${where} of the ${deviceLabel(port.deviceType)} "${port.component}"`;
 }
 
-const SUPPLY_TYPES = new Set(['PDH', 'VRM', 'MPM', 'BuckConverter', 'roboRIO', 'RadioSwitch', 'PneumaticsHub', 'Limelight', 'Coprocessor', 'KrakenX60', 'KrakenX44', 'Falcon500', 'SparkMaxNEO', 'NEOVortex', 'NEO550', 'BrushedController']);
+const SUPPLY_TYPES = new Set(['PDH', 'VRM', 'MPM', 'BuckConverter', 'SystemCore', 'roboRIO', 'RadioSwitch', 'PneumaticsHub', 'Limelight', 'Coprocessor', 'KrakenX60', 'KrakenX44', 'Falcon500', 'SparkMaxNEO', 'NEOVortex', 'NEO550', 'BrushedController']);
 
 /** One or two sentences a judge can repeat: why anyone should care that this is true */
 function whyItMatters(proof: ExplainedProof): string | undefined {

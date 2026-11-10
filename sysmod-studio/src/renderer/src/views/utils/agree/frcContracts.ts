@@ -33,7 +33,7 @@ export const FRC_LIMITS = {
 };
 
 const POWERED_TYPES = [
-  'PDH', 'VRM', 'MPM', 'BuckConverter', 'roboRIO', 'RadioSwitch', 'PneumaticsHub', 'Limelight', 'Coprocessor',
+  'PDH', 'VRM', 'MPM', 'BuckConverter', 'SystemCore', 'roboRIO', 'RadioSwitch', 'PneumaticsHub', 'Limelight', 'Coprocessor',
   'KrakenX60', 'KrakenX44', 'Falcon500', 'SparkMaxNEO', 'NEOVortex', 'NEO550', 'BrushedController',
 ];
 
@@ -66,6 +66,11 @@ guarantee "Switchable channel never exceeds the PDH input" :
 
   BuckConverter: `guarantee "Regulated output never exceeds ${FRC_LIMITS.regulatedMaxVolts} V" :
   pwr_regulated_out >= 0.0 and pwr_regulated_out <= ${FRC_LIMITS.regulatedMaxVolts.toFixed(1)};`,
+
+  // SystemCore's brownout threshold isn't published yet, so only the PWM range is promised.
+  // Add its brownout guarantee once FIRST's spec sheet gives the number.
+  SystemCore: `guarantee "PWM outputs stay between -1 and 1" :
+  pwm_out >= -1.0 and pwm_out <= 1.0;`,
 
   roboRIO: `const BROWNOUT_VOLTS : real = ${FRC_LIMITS.brownoutVolts};
 guarantee "PWM outputs stay between -1 and 1" :

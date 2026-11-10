@@ -80,6 +80,23 @@ async function main(): Promise<void> {
   const lemma = custom.results.find((r) => r.obligation?.source === 'Your contract');
   check('student lemma is proved from the standard contracts', lemma?.answer === 'valid', JSON.stringify(lemma));
 
+  // The same robot with a 2027 SystemCore in place of the roboRIO
+  const coreNodes = nodes.map((n) => (n.id === 'rio4' ? node('core4', 'SystemCore') : n));
+  const coreEdges = edges.map((e) => ({
+    ...e,
+    source: e.source === 'rio4' ? 'core4' : e.source,
+    target: e.target === 'rio4' ? 'core4' : e.target,
+  }));
+  const coreProgram = generateLustre(coreNodes, coreEdges, buildContracts(coreNodes, coreEdges, {}));
+  const coreRun = await runJKind(coreProgram.lustre, 120);
+  const coreResults = parseJKindXml(coreRun.xml || '', coreProgram.obligations);
+  check(
+    `a SystemCore robot proves all ${coreProgram.obligations.length} obligations`,
+    coreRun.success && coreResults.length === coreProgram.obligations.length && coreResults.every((r) => r.answer === 'valid'),
+    JSON.stringify(coreResults.filter((r) => r.answer !== 'valid').map((r) => [r.property, r.answer])),
+  );
+  check('the servo is proved safe from SystemCore’s PWM guarantee', coreResults.some((r) => r.property.startsWith('servo7__assume') && r.answer === 'valid'));
+
   const aadl = generateAadlCode(nodes, edges, buildContracts(nodes, edges, {}));
   check('AADL embeds the contracts', aadl.includes('with Base_Types;') && aadl.includes('annex agree {**'));
 

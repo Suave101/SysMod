@@ -43,7 +43,7 @@ export const WIRE_VALUE_TYPES: Record<WireFamily, 'bool' | 'real'> = {
 
 const AADL_BASE_TYPES = { bool: 'Base_Types::Boolean', real: 'Base_Types::Float' };
 
-// These ports take several wires (a bus, or the roboRIO's bank of DIO pins), which plain AADL data ports do not allow
+// These ports take several wires (a bus, or a controller's bank of DIO or Smart I/O pins), which plain AADL data ports do not allow
 const MESSAGE_FAMILIES: WireFamily[] = ['can', 'eth', 'usb', 'dio', 'i2c', 'mxp'];
 
 const DIO_SENSOR_PORTS: DevicePorts = { in: [], out: ['dio-out'] };
@@ -57,8 +57,12 @@ const DEVICE_PORTS: Record<string, DevicePorts> = {
   VRM: { in: ['pwr-12v-in'], out: ['pwr-regulated-out'] },
   MPM: { in: ['pwr-12v-in'], out: ['pwr-mpm-out'] },
   BuckConverter: { in: ['pwr-12v-in'], out: ['pwr-regulated-out'] },
-  roboRIO: { in: ['pwr-12v-in', 'eth-in', 'dio-in', 'i2c-in', 'mxp-in'], out: ['rsl-out', 'can-start', 'eth-out', 'pwm-out', 'usb-out'] },
+  // Every device has one Ethernet jack. A controller's is a source, wired up to the radio's RIO port;
+  // cameras and coprocessors have a target, wired from a radio AUX port or a switch
+  SystemCore: { in: ['pwr-12v-in', 'dio-in', 'i2c-in'], out: ['rsl-out', 'can-0', 'can-1', 'can-2', 'can-3', 'can-4', 'eth-out', 'pwm-out', 'usb-out'] },
+  roboRIO: { in: ['pwr-12v-in', 'dio-in', 'i2c-in', 'mxp-in'], out: ['rsl-out', 'can-start', 'eth-out', 'pwm-out', 'usb-out'] },
   RadioSwitch: { in: ['pwr-12v-in', 'eth-rio'], out: ['eth-aux', 'eth-aux2'] },
+  NetworkSwitch: { in: ['pwr-12v-in', 'eth-in'], out: ['eth-out'] },
   RSL: { in: ['rsl-in'], out: [] },
   CANivore: { in: ['usb-in'], out: ['can-fd-start'] },
   PWMServo: { in: ['pwm-in'], out: [] },
@@ -71,9 +75,9 @@ const DEVICE_PORTS: Record<string, DevicePorts> = {
   BeamBreak: DIO_SENSOR_PORTS,
   NavX2: { in: [], out: ['mxp-out'] },
   ColorSensor: { in: [], out: ['i2c-out'] },
-  Limelight: { in: ['pwr-12v-in', 'eth-in'], out: ['eth-out'] },
+  Limelight: { in: ['pwr-12v-in', 'eth-in'], out: [] },
   PhotonVision: { in: [], out: ['usb-out'] },
-  Coprocessor: { in: ['pwr-12v-in', 'eth-in', 'usb-in'], out: ['eth-out'] },
+  Coprocessor: { in: ['pwr-12v-in', 'eth-in', 'usb-in'], out: [] },
 };
 
 const AADL_RESERVED_WORDS = new Set([
@@ -169,12 +173,19 @@ export function groupWiresByNetwork<T>(items: T[], getEdge: (item: T) => Edge, f
     return root;
   };
 
+  // A controller with several CAN ports, like SystemCore's CAN 0 to CAN 4, starts several separate
+  // buses, so each of those ports counts as its own point instead of joining the buses together
+  const point = (nodeId: string, handle: string | null | undefined): string => (/^can-\d$/.test(handle || '') ? `${nodeId}#${handle}` : nodeId);
+
   const members = items.filter((item) => getWireFamily(getEdge(item).sourceHandle) === family);
-  members.forEach((item) => parents.set(find(getEdge(item).source), find(getEdge(item).target)));
+  members.forEach((item) => {
+    const e = getEdge(item);
+    parents.set(find(point(e.source, e.sourceHandle)), find(point(e.target, e.targetHandle)));
+  });
 
   const groups = new Map<string, T[]>();
   members.forEach((member) => {
-    const root = find(getEdge(member).source);
+    const root = find(point(getEdge(member).source, getEdge(member).sourceHandle));
     groups.set(root, [...(groups.get(root) || []), member]);
   });
 
