@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">SysMod Studio</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#312e81"/>
+    </linearGradient>
+  </defs>
+  <!-- Tile -->
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bg)"/>
+  <!-- The "S" is a wire, routed the way the diagram draws connections between components -->
+  <path d="M280 152 H168 A56 56 0 0 0 168 264 H344 A56 56 0 0 1 344 376 H232"
+        fill="none" stroke="#fbbf24" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- The two components it connects -->
+  <rect x="272" y="100" width="152" height="104" rx="26" fill="#eef2ff"/>
+  <rect x="88" y="324" width="152" height="104" rx="26" fill="#eef2ff"/>
+  <!-- Ports where the wire meets each component -->
+  <circle cx="272" cy="152" r="22" fill="#fbbf24" stroke="#312e81" stroke-width="10"/>
+  <circle cx="240" cy="376" r="22" fill="#fbbf24" stroke="#312e81" stroke-width="10"/>
+</svg>

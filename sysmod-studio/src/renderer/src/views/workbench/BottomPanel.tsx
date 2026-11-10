@@ -1,12 +1,14 @@
 import React from 'react';
 import {
-  AlertTriangle, Award, CheckCircle2, CircleAlert, HelpCircle, Info, Loader2, Play, ShieldCheck, Sigma, X, XCircle,
+  AlertTriangle, Award, CheckCircle2, Gauge, CircleAlert, HelpCircle, Info, Loader2, Play, ShieldCheck, Sigma, X, XCircle,
 } from 'lucide-react';
 import { FRC_DEVICE_DEFAULTS } from '../store/useRobotStore';
 import { ProofResult } from '../utils/agree/jkindResults';
 import { scopeLabel, WorkbenchModel } from './useWorkbenchModel';
+import { HardwarePanel } from './HardwarePanel';
+import { CAN_LOAD_LIMITS } from '../utils/hardwareValidation';
 
-export type PanelView = 'problems' | 'proofs';
+export type PanelView = 'problems' | 'hardware' | 'proofs';
 
 interface Problem {
   key: string;
@@ -143,6 +145,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({ model, view, height, o
       <div className="h-9 shrink-0 flex items-center justify-between px-3 gap-3">
         <div className="flex items-center gap-3 h-full">
           {tab('problems', 'Problems', problems.length)}
+          {tab('hardware', 'Hardware', model.hardware.issues.filter((i) => i.severity !== 'info').length)}
           {tab('proofs', 'Proofs', proof.results ? proof.results.length : program.obligations.length)}
         </div>
         <div className="flex items-center gap-1">
@@ -194,6 +197,8 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({ model, view, height, o
             ))
           ))}
 
+        {view === 'hardware' && <HardwarePanel hardware={model.hardware} nameOf={(id) => model.nodes.find((n) => n.id === id)?.data?.label || id} />}
+
         {view === 'proofs' && (
           <>
             {proof.error && <p className="px-3 py-1 text-xs font-mono text-red-300 whitespace-pre-wrap">{proof.error}</p>}
@@ -225,6 +230,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({ model, onShowPanel }) => {
   const errors = problems.filter((p) => p.severity === 'error').length;
   const warnings = problems.filter((p) => p.severity === 'warning').length;
   const { proof } = model;
+  const busiestCan = [...model.hardware.canBuses].sort((a, b) => b.utilization - a.utilization)[0];
 
   const proofLabel = proof.proving
     ? 'Proving...'
@@ -242,6 +248,15 @@ export const StatusBar: React.FC<StatusBarProps> = ({ model, onShowPanel }) => {
         <button onClick={() => onShowPanel('proofs')} className="flex items-center gap-1 h-full px-2 hover:bg-indigo-600" title="Show proofs">
           {proof.proving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sigma className="w-3.5 h-3.5" />} {proofLabel}
         </button>
+        {busiestCan && (
+          <button
+            onClick={() => onShowPanel('hardware')}
+            className={`flex items-center gap-1 h-full px-2 hover:bg-indigo-600 ${busiestCan.utilization >= CAN_LOAD_LIMITS.error ? 'bg-red-600' : busiestCan.utilization >= CAN_LOAD_LIMITS.warning ? 'bg-amber-500 text-slate-950' : ''}`}
+            title={`Busiest CAN bus: ${busiestCan.name}`}
+          >
+            <Gauge className="w-3.5 h-3.5" /> CAN {Math.round(busiestCan.utilization * 100)}%
+          </button>
+        )}
       </div>
       <div className="flex items-center gap-3 px-2 text-indigo-200">
         <span>{model.nodes.length} components · {model.edges.length} wires</span>

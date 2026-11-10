@@ -1,4 +1,8 @@
-# ⚙️ SysMod Studio
+<p align="center">
+  <img src="docs/img/logo.svg" alt="SysMod Studio logo" width="128">
+</p>
+
+# SysMod Studio
 
 **Model-Based Systems Engineering (MBSE) for FIRST Tech Challenge (FTC) & FIRST Robotics Competition (FRC)**
 
@@ -64,8 +68,8 @@ Open `http://localhost:5173` in your browser to start building your digital twin
 
 We are currently building **Phase 1**, focusing on rapid architecture mapping and code generation. However, the long-term vision of SysMod spans much further into aerospace-grade autonomous architectures.
 
-* **Phase 1 (Current):** Web-based node editor, PDF schematics, AADL syntax generation, and FTC/FRC Java hardware mapping.
-* **Phase 2 (Hardware Validation Engine):** Active alerts for CAN bus saturation, current limit exceedances, and duplicate port IDs.
+* **Phase 1 (Done):** Web-based node editor, PDF schematics, AADL syntax generation, and FTC/FRC Java hardware mapping.
+* **Phase 2 (Current, [Hardware Validation Engine](docs/hardware-validation.md)):** Active alerts for CAN bus saturation, current limit exceedances, and duplicate port IDs.
 * **Phase 3 (The Soar AI Coprocessor Bridge):** Integration with custom Alpine/Arch Linux AI coprocessors. SysMod will map data flows between the main robot controller and a Soar cognitive architecture agent for dynamic, safety-assured autonomous routines.
 
 ---

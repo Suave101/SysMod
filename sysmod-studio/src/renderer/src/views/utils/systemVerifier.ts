@@ -1,6 +1,7 @@
 import { Node, Edge } from '@xyflow/react';
 import { FRCEdgeData, FRCNodeData } from '../store/useRobotStore';
 import { getWireFamily, groupWiresByNetwork, isMismatchedWire, WireFamily } from './aadlGenerator';
+import { analyzeHardware, HardwareAnalysis, HardwareIssue } from './hardwareValidation';
 
 export interface VerificationIssue {
   id: string;
@@ -8,6 +9,8 @@ export interface VerificationIssue {
   title: string;
   message: string;
   nodeIds?: string[];
+  /** Set on issues from the hardware validation engine, which are alerted on the canvas */
+  category?: HardwareIssue['category'];
 }
 
 export interface VerificationReport {
@@ -51,16 +54,11 @@ const ROBORIO_PORT_LIMITS: { handle: string; name: string; limit: number }[] = [
   { handle: 'usb-out', name: 'USB', limit: 2 },
 ];
 
-// CAN IDs only need to be unique per device class, and these models share a class
-const CAN_ID_CLASSES: Record<string, string> = {
-  KrakenX60: 'TalonFX',
-  Falcon500: 'TalonFX',
-  SparkMaxNEO: 'SPARK',
-  NEOVortex: 'SPARK',
-  NEO550: 'SPARK',
-};
-
-export function verifySystemProperties(nodes: Node<FRCNodeData>[], edges: Edge[]): VerificationReport {
+export function verifySystemProperties(
+  nodes: Node<FRCNodeData>[],
+  edges: Edge[],
+  hardware: HardwareAnalysis = analyzeHardware(nodes, edges),
+): VerificationReport {
   const issues: VerificationIssue[] = [];
 
   const nodesOfType = (...types: string[]): Node<FRCNodeData>[] => nodes.filter((n) => types.includes(n.data?.deviceType));
@@ -253,19 +251,7 @@ export function verifySystemProperties(nodes: Node<FRCNodeData>[], edges: Edge[]
     }
   });
 
-  // Unwired devices have no network, so they are only compared against each other
-  canNetworks.forEach((network, networkIdx) => {
-    const ids = networkNodeIds(network);
-    const seen = new Map<string, Node<FRCNodeData>>();
-    nodes.filter((n) => ids.has(n.id) && CAN_DEVICES.includes(n.data?.deviceType) && n.data?.canId !== undefined).forEach((node) => {
-      const key = `${CAN_ID_CLASSES[node.data.deviceType] || node.data.deviceType}:${node.data.canId}`;
-      const duplicate = seen.get(key);
-      if (duplicate) {
-        issues.push({ id: `can-id-${networkIdx}-${node.id}`, severity: 'error', title: 'Duplicate CAN ID', message: `${nodeName(node)} and ${nodeName(duplicate)} share CAN ID ${node.data.canId} on the same bus.`, nodeIds: [node.id, duplicate.id] });
-      }
-      seen.set(key, node);
-    });
-  });
+  // Duplicate CAN IDs are checked by the hardware validation engine, with DIO, PWM and PDH channels
 
   // ── Rule 11: CAN FD Bus Compatibility ──
   canNetworks.filter((network) => network.some((e) => e.sourceHandle === 'can-fd-start')).forEach((network, networkIdx) => {
@@ -343,6 +329,9 @@ export function verifySystemProperties(nodes: Node<FRCNodeData>[], edges: Edge[]
       }
     });
   }
+
+  // ── Rules 15 to 17: Hardware Validation Engine (CAN load, current limits, port and ID conflicts) ──
+  issues.push(...hardware.issues);
 
   const errorCount = issues.filter((i) => i.severity === 'error').length;
   const warningCount = issues.filter((i) => i.severity === 'warning').length;

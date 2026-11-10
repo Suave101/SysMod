@@ -15,5 +15,7 @@ contextBridge.exposeInMainWorld('sysmodAPI', {
   saveJavaFile: async (code: string): Promise<SaveFileResponse> => {
     return await ipcRenderer.invoke('save-java-file', code);
   },
+  saveTextFile: (content: string, options: { defaultName: string; extension: string; description: string }) =>
+    ipcRenderer.invoke('save-text-file', content, options),
   runJKind: (lustre: string, timeoutSec?: number) => ipcRenderer.invoke('run-jkind', lustre, timeoutSec)
 });

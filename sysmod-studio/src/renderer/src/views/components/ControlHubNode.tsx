@@ -2,6 +2,7 @@ import React from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
 import { Cpu, Zap, Trash2, Power, Wifi, ShieldAlert, Radio, Lock, Share2, Wind } from 'lucide-react';
 import { useRobotStore, FRCNodeData } from '../store/useRobotStore';
+import { NodeNumberField } from './NodeFields';
 
 export const ControlHubNode: React.FC<NodeProps> = ({ id, data }) => {
   const nodeData = data as unknown as FRCNodeData;
@@ -276,6 +277,12 @@ export const ControlHubNode: React.FC<NodeProps> = ({ id, data }) => {
             <span className="font-bold">Solenoid Channels (0–15)</span>
             <Handle type="source" position={Position.Right} id="sol-out" className="w-3.5 h-3.5 !bg-cyan-400 !border-2 !border-slate-950 rounded-full !right-[-12px]" />
           </div>
+
+          {nodeData.canId !== undefined && (
+            <div className="flex justify-end text-[9px] font-mono">
+              <NodeNumberField nodeId={id} field="canId" value={nodeData.canId} label="CAN ID:" min={0} max={62} />
+            </div>
+          )}
         </div>
       </div>
     );

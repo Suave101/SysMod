@@ -3,9 +3,10 @@ import * as monaco from 'monaco-editor';
 import { Award, ChevronDown, ChevronRight, Code2, FileCode, FileText, Pencil, Plus, Save, Sigma, Trash2 } from 'lucide-react';
 import { DEVICE_CATEGORIES, FRC_DEVICE_DEFAULTS, useRobotStore } from '../store/useRobotStore';
 import { ContractSource, SYSTEM_SCOPE } from '../utils/agree/frcContracts';
-import { beforeMonacoMount } from '../components/CodeViewerModal';
+import { beforeMonacoMount } from '../utils/monacoLanguages';
 import { HARDWARE_STYLES } from './hardwareStyles';
 import { scopeLabel, WorkbenchModel } from './useWorkbenchModel';
+import { GENERATED_FILES, GeneratedFileId } from './Editors';
 
 const SectionHeader: React.FC<{ title: string; actions?: React.ReactNode }> = ({ title, actions }) => (
   <div className="flex items-center justify-between px-3 h-9 shrink-0 text-[11px] font-mono font-bold uppercase tracking-wider text-slate-400">
@@ -171,11 +172,30 @@ export const ContractsView: React.FC<ContractsViewProps> = ({ model, onOpenAadl,
 
 interface ProjectViewProps {
   onExportPdf: () => void;
-  onExportRobotPy: () => void;
-  onViewCode: () => void;
-  onSaveAadl: () => void;
+  onOpenFile: (file: GeneratedFileId) => void;
+  onSaveFile: (file: GeneratedFileId) => void;
   onOpenJudgeReport: () => void;
 }
+
+const FILE_ROWS: { id: GeneratedFileId; icon: React.ReactNode }[] = [
+  { id: 'python', icon: <FileCode className="w-3.5 h-3.5 text-emerald-400" /> },
+  { id: 'java', icon: <Code2 className="w-3.5 h-3.5 text-amber-400" /> },
+  { id: 'aadl', icon: <FileText className="w-3.5 h-3.5 text-indigo-400" /> },
+];
+
+/** A generated file: select it to open it as a tab, or save it with the icon on the right */
+const GeneratedFileRow: React.FC<{ id: GeneratedFileId; icon: React.ReactNode; onOpen: () => void; onSave: () => void }> = ({ id, icon, onOpen, onSave }) => (
+  <div className="flex items-stretch rounded border border-slate-800 hover:bg-slate-800/60 transition">
+    <button onClick={onOpen} className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2 text-xs font-mono text-left text-slate-300" title={`Open ${GENERATED_FILES[id].fileName}`}>
+      {icon}
+      <span className="truncate">{GENERATED_FILES[id].fileName}</span>
+      <span className="ml-auto text-[10px] text-slate-500 whitespace-nowrap">{GENERATED_FILES[id].description}</span>
+    </button>
+    <button onClick={onSave} className="px-2 border-l border-slate-800 text-slate-500 hover:text-slate-100" title={`Save ${GENERATED_FILES[id].fileName}`} aria-label={`Save ${GENERATED_FILES[id].fileName}`}>
+      <Save className="w-3.5 h-3.5" />
+    </button>
+  </div>
+);
 
 const ProjectButton: React.FC<{ onClick: () => void; icon: React.ReactNode; label: string; danger?: boolean }> = ({ onClick, icon, label, danger }) => (
   <button
@@ -189,17 +209,21 @@ const ProjectButton: React.FC<{ onClick: () => void; icon: React.ReactNode; labe
   </button>
 );
 
-export const ProjectView: React.FC<ProjectViewProps> = ({ onExportPdf, onExportRobotPy, onViewCode, onSaveAadl, onOpenJudgeReport }) => {
+export const ProjectView: React.FC<ProjectViewProps> = ({ onExportPdf, onOpenFile, onSaveFile, onOpenJudgeReport }) => {
   const clearWorkspace = useRobotStore((state) => state.clearWorkspace);
   return (
     <>
+      <SectionHeader title="Generated code" />
+      <div className="px-3 space-y-1.5">
+        {FILE_ROWS.map((row) => (
+          <GeneratedFileRow key={row.id} id={row.id} icon={row.icon} onOpen={() => onOpenFile(row.id)} onSave={() => onSaveFile(row.id)} />
+        ))}
+        <p className="text-[10px] text-slate-500 px-1">Opens as a tab and updates as you wire. Motor current limits come from each component.</p>
+      </div>
       <SectionHeader title="Export" />
       <div className="px-3 space-y-1.5">
         <ProjectButton onClick={onOpenJudgeReport} icon={<Award className="w-3.5 h-3.5 text-amber-400" />} label="Judge report (proofs)" />
         <ProjectButton onClick={onExportPdf} icon={<FileText className="w-3.5 h-3.5 text-sky-400" />} label="PDF schematic and BOM" />
-        <ProjectButton onClick={onExportRobotPy} icon={<FileCode className="w-3.5 h-3.5 text-emerald-400" />} label="robot.py (RobotPy)" />
-        <ProjectButton onClick={onViewCode} icon={<Code2 className="w-3.5 h-3.5 text-amber-400" />} label="Preview generated code" />
-        <ProjectButton onClick={onSaveAadl} icon={<Save className="w-3.5 h-3.5 text-indigo-400" />} label="Save .aadl model" />
       </div>
       <SectionHeader title="Workspace" />
       <div className="px-3 space-y-1.5">

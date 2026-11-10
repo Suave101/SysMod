@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { registerJKindHandlers } from './jkind';
+import windowIcon from '../../resources/icon.png?asset';
 
 registerJKindHandlers();
 
@@ -38,6 +39,8 @@ function createWindow(): void {
     height: 800,
     show: false,
     autoHideMenuBar: true,
+    // Windows and macOS take the icon from the installed app; Linux needs it on the window
+    ...(process.platform === 'linux' ? { icon: windowIcon } : {}),
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       sandbox: true, // Bolsters security matching Electron production guidelines
@@ -84,6 +87,32 @@ ipcMain.handle('save-java-file', async (_event, code: string) => {
     return { success: false, error: errorMessage };
   }
 });
+
+// Saves any generated text file (robot.py, Robot.java, the .aadl model) through a native dialog
+ipcMain.handle(
+  'save-text-file',
+  async (_event, content: string, options: { defaultName: string; extension: string; description: string }) => {
+    const windowContext = BrowserWindow.getFocusedWindow();
+    if (!windowContext) return { success: false, error: 'No active window context detected.' };
+
+    const { canceled, filePath } = await dialog.showSaveDialog(windowContext, {
+      title: `Save ${options.defaultName}`,
+      defaultPath: path.join(app.getPath('documents'), options.defaultName),
+      filters: [
+        { name: options.description, extensions: [options.extension] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+    });
+    if (canceled || !filePath) return { success: false, canceled: true };
+
+    try {
+      fs.writeFileSync(filePath, content, 'utf-8');
+      return { success: true, filePath };
+    } catch (error: unknown) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  },
+);
 
 app.whenReady().then(() => {
   createWindow();

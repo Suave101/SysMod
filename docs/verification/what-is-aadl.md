@@ -57,7 +57,7 @@ Real robots do not connect a motor straight to the battery. This example only sh
 
 ## AADL in SysMod Studio
 
-You never have to write AADL by hand in SysMod. On the Architecture page, select **Model & Contracts** in the activity bar, then `FRC_Robot_Architecture.aadl`. It opens as a read-only tab that updates as you wire. Select **Save .aadl** to save the file.
+You never have to write AADL by hand in SysMod. On the Architecture page, select **Model & Contracts** in the activity bar, then `FRC_Robot_Architecture.aadl`. It opens as a read-only tab that updates as you wire. Select **Save FRC_Robot_Architecture.aadl** to save the file. You can also open it from **Export & Project → Generated code**, next to `robot.py` and `Robot.java`.
 
 The saved file opens in [OSATE](https://osate.org), the free AADL toolset from the Software Engineering Institute at Carnegie Mellon University. Because it is plain text, you can also commit it to your team's repository and compare versions over the season.
 

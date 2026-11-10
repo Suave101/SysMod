@@ -41,6 +41,9 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: Check the hardware validation engine
+        run: npm run test:hardware
+
       - name: Compile JKind and bundle a Java runtime
         run: npm run build:jkind -- --rebuild
 

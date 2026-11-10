@@ -1,4 +1,5 @@
 import React from 'react';
+import logoUrl from '../../assets/logo.svg';
 
 export type ProcessStepId = 'design-brief' | 'moscow' | 'decision-matrix' | 'canvas';
 type StepStatus = 'completed' | 'active' | 'upcoming';
@@ -30,9 +31,10 @@ export default function ProcessTimeline({ currentStep }: ProcessTimelineProps): 
   const currentIndex = PROCESS_STEPS.findIndex((step) => step.id === currentStep);
 
   return (
-  <div className="@container w-full mb-3!">
+  <div className="@container w-full mb-3! flex items-start gap-4">
+    <img src={logoUrl} alt="SysMod Studio" title="SysMod Studio" className="w-9 h-9 shrink-0 mt-1" draggable={false} />
     <ul
-      className="timeline timeline-compact timeline-horizontal w-full"
+      className="timeline timeline-compact timeline-horizontal w-full min-w-0"
       aria-label="Design process progress"
     >
       {PROCESS_STEPS.map((step, index) => {

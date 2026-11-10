@@ -1,19 +1,27 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Award, FileText, Sigma, Workflow, X } from 'lucide-react';
+import { Award, Code2, FileText, Sigma, Terminal, Workflow, X } from 'lucide-react';
 import { FRC_DEVICE_DEFAULTS } from './store/useRobotStore';
-import { CodeViewerModal } from './components/CodeViewerModal';
 import { PdfPreviewModal } from './components/PdfPreviewModal';
-import { generatePythonCode, generateJavaCode } from './utils/codeGenerators';
 import { generateArchitectureReportHtml } from './utils/pdfGenerator';
 import { ActivityBar, SideView } from './workbench/ActivityBar';
 import { ComponentsView, ContractsView, ProjectView } from './workbench/SideBarViews';
-import { AadlEditor, ContractEditor, DiagramEditor, downloadAadl } from './workbench/Editors';
+import { ContractEditor, DiagramEditor, GENERATED_FILES, GeneratedFileEditor, GeneratedFileId, saveGeneratedFile } from './workbench/Editors';
 import { BottomPanel, collectProblems, PanelView, StatusBar } from './workbench/BottomPanel';
 import { scopeLabel, useWorkbenchModel } from './workbench/useWorkbenchModel';
 import { JudgeReport } from './workbench/JudgeReport';
 
-type EditorTab = { id: 'diagram' } | { id: 'aadl' } | { id: 'judges' } | { id: `contract:${string}`; scope: string };
+type EditorTab =
+  | { id: 'diagram' }
+  | { id: 'judges' }
+  | { id: `file:${GeneratedFileId}`; file: GeneratedFileId }
+  | { id: `contract:${string}`; scope: string };
+
+const FILE_ICONS: Record<GeneratedFileId, React.ReactNode> = {
+  aadl: <FileText className="w-3.5 h-3.5 text-indigo-400" />,
+  python: <Terminal className="w-3.5 h-3.5 text-emerald-400" />,
+  java: <Code2 className="w-3.5 h-3.5 text-amber-400" />,
+};
 
 const DIAGRAM_TAB: EditorTab = { id: 'diagram' };
 const SIDE_BAR_LIMITS = { min: 200, max: 520, initial: 288 };
@@ -62,7 +70,6 @@ export default function App(): React.JSX.Element {
   const sideBar = useSash(SIDE_BAR_LIMITS.initial, SIDE_BAR_LIMITS, 'x');
   const panel = useSash(PANEL_LIMITS.initial, PANEL_LIMITS, 'y', true);
 
-  const [isCodeModalOpen, setIsCodeModalOpen] = useState(false);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [pdfReportHtml, setPdfReportHtml] = useState('');
 
@@ -73,6 +80,7 @@ export default function App(): React.JSX.Element {
 
   const openContract = useCallback((scope: string) => openTab({ id: `contract:${scope}`, scope }), [openTab]);
   const openJudgeReport = useCallback(() => openTab({ id: 'judges' }), [openTab]);
+  const openFile = useCallback((file: GeneratedFileId) => openTab({ id: `file:${file}`, file }), [openTab]);
 
   const closeTab = (id: EditorTab['id']): void => {
     if (id === 'diagram') return;
@@ -127,31 +135,9 @@ export default function App(): React.JSX.Element {
     setIsPdfModalOpen(true);
   };
 
-  const handleExportRobotPy = async (): Promise<void> => {
-    const pythonCode = generatePythonCode(nodes, edges);
-    try {
-      if (window.sysmodAPI && window.sysmodAPI.saveJavaFile) {
-        const response = await window.sysmodAPI.saveJavaFile(pythonCode);
-        if (response.success && response.filePath) {
-          alert(`RobotPy script exported successfully to:\n${response.filePath}`);
-        }
-      } else {
-        const url = URL.createObjectURL(new Blob([pythonCode], { type: 'text/x-python' }));
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'robot.py';
-        a.click();
-        URL.revokeObjectURL(url);
-      }
-    } catch (error) {
-      console.error('Export error:', error);
-      alert('Failed to save robot.py script.');
-    }
-  };
-
   const tabTitle = (tab: EditorTab): { label: string; icon: React.ReactNode } => {
     if (tab.id === 'diagram') return { label: 'Architecture', icon: <Workflow className="w-3.5 h-3.5 text-sky-400" /> };
-    if (tab.id === 'aadl') return { label: 'FRC_Robot_Architecture.aadl', icon: <FileText className="w-3.5 h-3.5 text-indigo-400" /> };
+    if ('file' in tab) return { label: GENERATED_FILES[tab.file].fileName, icon: FILE_ICONS[tab.file] };
     if (tab.id === 'judges') return { label: 'Judge Report', icon: <Award className="w-3.5 h-3.5 text-amber-400" /> };
     return { label: `${scopeLabel(tab.scope, FRC_DEVICE_DEFAULTS)}.agree`, icon: <Sigma className="w-3.5 h-3.5 text-emerald-400" /> };
   };
@@ -170,13 +156,12 @@ export default function App(): React.JSX.Element {
         {isSideBarOpen && (
           <aside style={{ width: sideBar.size }} className="relative shrink-0 flex flex-col bg-slate-900 border-r border-slate-800" aria-label="Side bar">
             {sideView === 'components' && <ComponentsView />}
-            {sideView === 'contracts' && <ContractsView model={model} onOpenAadl={() => openTab({ id: 'aadl' })} onOpenContract={openContract} />}
+            {sideView === 'contracts' && <ContractsView model={model} onOpenAadl={() => openFile('aadl')} onOpenContract={openContract} />}
             {sideView === 'project' && (
               <ProjectView
                 onExportPdf={handleExportPdf}
-                onExportRobotPy={handleExportRobotPy}
-                onViewCode={() => setIsCodeModalOpen(true)}
-                onSaveAadl={() => downloadAadl(model.aadl)}
+                onOpenFile={openFile}
+                onSaveFile={(file) => saveGeneratedFile(GENERATED_FILES[file], model.generated[file])}
                 onOpenJudgeReport={openJudgeReport}
               />
             )}
@@ -231,12 +216,12 @@ export default function App(): React.JSX.Element {
           {/* The diagram stays mounted so its pan and zoom survive switching tabs */}
           <div className="relative flex-1 min-h-0">
             <div className={`absolute inset-0 ${activeTab.id === 'diagram' ? '' : 'invisible pointer-events-none'}`}>
-              <DiagramEditor isVisible={activeTab.id === 'diagram'} layoutKey={layoutKey} />
+              <DiagramEditor isVisible={activeTab.id === 'diagram'} layoutKey={layoutKey} issues={model.report.issues} />
             </div>
             {/* Opaque and on top, because React Flow forces its nodes visible inside a hidden parent */}
-            {activeTab.id === 'aadl' && (
+            {'file' in activeTab && (
               <div className="absolute inset-0 z-10 bg-slate-950">
-                <AadlEditor aadl={model.aadl} />
+                <GeneratedFileEditor key={activeTab.file} file={GENERATED_FILES[activeTab.file]} content={model.generated[activeTab.file]} />
               </div>
             )}
             {activeTab.id === 'judges' && (
@@ -267,14 +252,6 @@ export default function App(): React.JSX.Element {
       </div>
 
       <StatusBar model={model} onShowPanel={showPanel} />
-
-      <CodeViewerModal
-        isOpen={isCodeModalOpen}
-        onClose={() => setIsCodeModalOpen(false)}
-        aadlCode={model.aadl}
-        javaCode={isCodeModalOpen ? generateJavaCode(nodes, edges) : ''}
-        pythonCode={isCodeModalOpen ? generatePythonCode(nodes, edges) : ''}
-      />
 
       <PdfPreviewModal isOpen={isPdfModalOpen} onClose={() => setIsPdfModalOpen(false)} htmlContent={pdfReportHtml} />
     </div>

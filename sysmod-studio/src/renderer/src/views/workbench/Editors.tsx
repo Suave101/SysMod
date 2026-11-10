@@ -5,9 +5,11 @@ import { Check, ChevronDown, ChevronRight, Copy, Download, Loader2, Play, Shield
 import { FRCNodeData, FRC_DEVICE_DEFAULTS, useRobotStore } from '../store/useRobotStore';
 import { ControlHubNode } from '../components/ControlHubNode';
 import { StandardNode } from '../components/StandardNode';
-import { beforeMonacoMount, EDITOR_OPTIONS } from '../components/CodeViewerModal';
+import { beforeMonacoMount, EDITOR_OPTIONS } from '../utils/monacoLanguages';
 import { getStandardDeviceContract, getStandardSystemContract, SYSTEM_SCOPE } from '../utils/agree/frcContracts';
 import { scopeLabel, WorkbenchModel } from './useWorkbenchModel';
+import { AlertToasts, issuesByNode, NodeAlertsProvider, withNodeAlerts } from './HardwareAlerts';
+import type { VerificationIssue } from '../utils/systemVerifier';
 import '@xyflow/react/dist/style.css';
 
 const proOptions = { hideAttribution: true };
@@ -60,13 +62,22 @@ const ToolbarButton: React.FC<{ onClick: () => void; icon: React.ReactNode; labe
 interface DiagramEditorProps {
   isVisible: boolean;
   layoutKey: string;
+  issues: VerificationIssue[];
 }
 
-export const DiagramEditor: React.FC<DiagramEditorProps> = ({ isVisible, layoutKey }) => {
+// Wrapped once, outside render, so React Flow never sees new node types
+const NODE_TYPES: NodeTypes = { ControlHub: withNodeAlerts(ControlHubNode), StandardNode: withNodeAlerts(StandardNode) };
+
+export const DiagramEditor: React.FC<DiagramEditorProps> = ({ isVisible, layoutKey, issues }) => {
   const { nodes, edges, onNodesChange, onEdgesChange, onConnect, removeEdge } = useRobotStore();
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<Node<FRCNodeData>, Edge> | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
-  const nodeTypes = useMemo<NodeTypes>(() => ({ ControlHub: ControlHubNode, StandardNode: StandardNode }), []);
+  const alertsByNode = useMemo(() => issuesByNode(issues), [issues]);
+
+  const showOnDiagram = (issue: VerificationIssue): void => {
+    if (!flowInstance || !issue.nodeIds?.length) return;
+    flowInstance.fitView({ nodes: issue.nodeIds.map((id) => ({ id })), duration: 400, padding: 0.5, maxZoom: 1.2 });
+  };
 
   // Opening or closing a side bar or panel resizes the canvas, so refit once it settles
   useEffect(() => {
@@ -101,41 +112,72 @@ export const DiagramEditor: React.FC<DiagramEditorProps> = ({ isVisible, layoutK
         ))}
       </div>
 
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        onEdgeClick={handleEdgeClick}
-        onInit={setFlowInstance}
-        nodeTypes={nodeTypes}
-        fitView
-        minZoom={0.2}
-        proOptions={proOptions}
-      >
-        <Background color="#334155" gap={16} size={1} />
-        <Controls className="bg-slate-900! border-slate-700! fill-slate-200! [&_button]:border-slate-800! [&_button]:bg-slate-900" />
-      </ReactFlow>
+      <NodeAlertsProvider value={alertsByNode}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onEdgeClick={handleEdgeClick}
+          onInit={setFlowInstance}
+          nodeTypes={NODE_TYPES}
+          fitView
+          minZoom={0.2}
+          proOptions={proOptions}
+        >
+          <Background color="#334155" gap={16} size={1} />
+          <Controls className="bg-slate-900! border-slate-700! fill-slate-200! [&_button]:border-slate-800! [&_button]:bg-slate-900" />
+        </ReactFlow>
+      </NodeAlertsProvider>
+
+      {isVisible && <AlertToasts issues={issues} onShow={showOnDiagram} />}
     </div>
   );
 };
 
-// ── Generated AADL (read only) ──
+// ── Generated files (read only): the AADL model, robot.py and Robot.java ──
 
-export function downloadAadl(aadl: string): void {
-  const url = URL.createObjectURL(new Blob([aadl], { type: 'text/plain' }));
+/** A file SysMod generates from the diagram, shown as a read-only editor tab */
+export interface GeneratedFile {
+  fileName: string;
+  language: string;
+  folder: string;
+  description: string;
+}
+
+export const GENERATED_FILES = {
+  aadl: { fileName: 'FRC_Robot_Architecture.aadl', language: 'aadl', folder: 'Model', description: 'AADL model' },
+  python: { fileName: 'robot.py', language: 'python', folder: 'Robot code', description: 'RobotPy (Python)' },
+  java: { fileName: 'Robot.java', language: 'java', folder: 'Robot code', description: 'WPILib (Java)' },
+} satisfies Record<string, GeneratedFile>;
+
+export type GeneratedFileId = keyof typeof GENERATED_FILES;
+
+/**
+ * Saves a generated file. In the desktop app this opens a native save dialog; in a browser it
+ * downloads the file.
+ */
+export async function saveGeneratedFile(file: GeneratedFile, content: string): Promise<void> {
+  const extension = file.fileName.split('.').pop() as string;
+  if (window.sysmodAPI?.saveTextFile) {
+    await window.sysmodAPI.saveTextFile(content, { defaultName: file.fileName, extension, description: file.description });
+    return;
+  }
+  const url = URL.createObjectURL(new Blob([content], { type: 'text/plain' }));
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'FRC_Robot_Architecture.aadl';
+  a.download = file.fileName;
   a.click();
   URL.revokeObjectURL(url);
 }
 
-export const AadlEditor: React.FC<{ aadl: string }> = ({ aadl }) => {
+export const downloadAadl = (aadl: string): Promise<void> => saveGeneratedFile(GENERATED_FILES.aadl, aadl);
+
+export const GeneratedFileEditor: React.FC<{ file: GeneratedFile; content: string }> = ({ file, content }) => {
   const [copied, setCopied] = useState(false);
   const handleCopy = async (): Promise<void> => {
-    await navigator.clipboard.writeText(aadl);
+    await navigator.clipboard.writeText(content);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -143,17 +185,26 @@ export const AadlEditor: React.FC<{ aadl: string }> = ({ aadl }) => {
   return (
     <div className="flex flex-col h-full">
       <Breadcrumbs
-        parts={['Model', 'FRC_Robot_Architecture.aadl']}
+        parts={[file.folder, file.fileName]}
         actions={
           <>
-            <span className="text-[10px] font-mono text-slate-500 mr-1">Generated · read only</span>
+            <span className="text-[10px] font-mono text-slate-500 mr-1">Generated from the diagram · read only</span>
             <ToolbarButton onClick={handleCopy} icon={copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />} label={copied ? 'Copied!' : 'Copy'} />
-            <ToolbarButton onClick={() => downloadAadl(aadl)} icon={<Download className="w-3.5 h-3.5" />} label="Save .aadl" />
+            <ToolbarButton onClick={() => saveGeneratedFile(file, content)} icon={<Download className="w-3.5 h-3.5" />} label={`Save ${file.fileName}`} />
           </>
         }
       />
       <div className="flex-1 min-h-0">
-        <Editor height="100%" language="aadl" value={aadl} theme="sysmod-dark" beforeMount={beforeMonacoMount} options={EDITOR_PANE_OPTIONS} loading={<EditorLoading />} />
+        <Editor
+          height="100%"
+          language={file.language}
+          value={content}
+          theme="sysmod-dark"
+          beforeMount={beforeMonacoMount}
+          options={EDITOR_PANE_OPTIONS}
+          loading={<EditorLoading />}
+          path={`generated/${file.fileName}`}
+        />
       </div>
     </div>
   );

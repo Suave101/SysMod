@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useRobotStore } from '../store/useRobotStore';
-import { generateAadlCode } from '../utils/codeGenerators';
+import { generateAadlCode, generateJavaCode, generatePythonCode } from '../utils/codeGenerators';
 import { verifySystemProperties } from '../utils/systemVerifier';
+import { analyzeHardware } from '../utils/hardwareValidation';
 import { buildContracts } from '../utils/agree/frcContracts';
 import { generateLustre, LustreProgram } from '../utils/agree/lustreGenerator';
 import { parseJKindXml, ProofResult } from '../utils/agree/jkindResults';
@@ -20,7 +21,13 @@ export function useWorkbenchModel() {
 
   const contracts = useMemo(() => buildContracts(nodes, edges, customContracts), [nodes, edges, customContracts]);
   const aadl = useMemo(() => generateAadlCode(nodes, edges, contracts), [nodes, edges, contracts]);
-  const report = useMemo(() => verifySystemProperties(nodes, edges), [nodes, edges]);
+  const hardware = useMemo(() => analyzeHardware(nodes, edges), [nodes, edges]);
+  // Every generated file, keyed like GENERATED_FILES, so editor tabs update as you wire
+  const generated = useMemo(
+    () => ({ aadl, python: generatePythonCode(nodes, edges), java: generateJavaCode(nodes, edges) }),
+    [aadl, nodes, edges],
+  );
+  const report = useMemo(() => verifySystemProperties(nodes, edges, hardware), [nodes, edges, hardware]);
   const program = useMemo(() => generateLustre(nodes, edges, contracts), [nodes, edges, contracts]);
 
   const [proving, setProving] = useState(false);
@@ -62,6 +69,8 @@ export function useWorkbenchModel() {
     edges,
     contracts,
     aadl,
+    generated,
+    hardware,
     report,
     program,
     proof: {

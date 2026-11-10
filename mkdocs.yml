@@ -5,6 +5,7 @@ nav:
       - Installation: getting-started/installation.md
       - Design Brief: getting-started/design-brief.md
       - Moscow Selector: getting-started/moscow-selector.md
+  - Hardware Validation: hardware-validation.md
   - Formal Verification:
       - What is AADL?: verification/what-is-aadl.md
       - What is AGREE?: verification/what-is-agree.md

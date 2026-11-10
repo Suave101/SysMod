@@ -25,6 +25,8 @@ export interface FRCNodeData extends Record<string, unknown> {
   dioPort?: number;
   pwmPort?: number;
   powerChannel?: string;
+  /** Motor controller supply current limit, in amps */
+  currentLimit?: number;
   protocol?: string;
   details?: string;
 }
@@ -47,6 +49,8 @@ interface RobotStore {
   clearWorkspace: () => void;
   setNodes: (nodes: Node<FRCNodeData>[]) => void;
   setEdges: (edges: Edge[]) => void;
+  /** Changes a device's settings, such as its CAN ID or current limit */
+  updateNodeData: (id: string, patch: Partial<FRCNodeData>) => void;
   customContracts: Record<string, string>;
   setCustomContract: (scope: string, text: string) => void;
   getPdhAllocations: () => {
@@ -129,6 +133,7 @@ export const FRC_DEVICE_DEFAULTS: Record<string, { label: string; category: Devi
 
 const CAN_ID_DEVICES = ['KrakenX60', 'KrakenX44', 'Falcon500', 'SparkMaxNEO', 'NEOVortex', 'NEO550', 'BrushedController', 'PneumaticsHub', 'CANcoder', 'Pigeon2', 'TimeOfFlight'];
 const DIO_DEVICES = ['LimitSwitch', 'BeamBreak', 'ThroughBore'];
+const MOTOR_CONTROLLERS = ['KrakenX60', 'KrakenX44', 'Falcon500', 'SparkMaxNEO', 'NEOVortex', 'NEO550', 'BrushedController'];
 
 function lowestUnused(used: (number | undefined)[], first: number, last: number): number | undefined {
   for (let value = first; value <= last; value++) {
@@ -490,6 +495,7 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
         canId: CAN_ID_DEVICES.includes(type) ? lowestUnused(nodes.map((n) => n.data.canId), 1, 62) : undefined,
         dioPort: DIO_DEVICES.includes(type) ? lowestUnused(nodes.map((n) => n.data.dioPort), 0, 9) : undefined,
         pwmPort: type === 'PWMServo' ? lowestUnused(nodes.map((n) => n.data.pwmPort), 0, 9) : undefined,
+        currentLimit: MOTOR_CONTROLLERS.includes(type) ? 40 : undefined,
       },
     };
 
@@ -508,6 +514,8 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
   clearWorkspace: () => set({ nodes: [], edges: [] }),
   setNodes: (nodes) => set({ nodes }),
   setEdges: (edges) => set({ edges }),
+  updateNodeData: (id, patch) =>
+    set({ nodes: get().nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)) }),
   customContracts: {},
   setCustomContract: (scope, text) => set({ customContracts: { ...get().customContracts, [scope]: text } }),
 }));

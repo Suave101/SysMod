@@ -1,5 +1,6 @@
 import React from 'react';
-import { ArrowLeft, Boxes, FolderTree, Layers, Share2 } from 'lucide-react';
+import { ArrowLeft, Boxes, FolderTree, Share2 } from 'lucide-react';
+import logoUrl from '../../assets/logo.svg';
 
 export type SideView = 'components' | 'contracts' | 'project';
 
@@ -21,7 +22,7 @@ interface ActivityBarProps {
 export const ActivityBar: React.FC<ActivityBarProps> = ({ activeView, isSideBarOpen, problemCount, onSelect, onBack }) => (
   <nav className="w-12 shrink-0 flex flex-col items-center justify-between bg-slate-950 border-r border-slate-800 py-2">
     <div className="flex flex-col items-center gap-1">
-      <Layers className="w-6 h-6 text-indigo-500 mb-2" aria-label="SysMod Studio" />
+      <img src={logoUrl} alt="SysMod Studio" title="SysMod Studio" className="w-7 h-7 mb-2" draggable={false} />
       {VIEWS.map((view) => {
         const isActive = isSideBarOpen && activeView === view.id;
         return (

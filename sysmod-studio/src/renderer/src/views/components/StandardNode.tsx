@@ -2,6 +2,8 @@ import React from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
 import { Trash2, Box, Wind, Camera, Radio, Activity, BatteryCharging, Cpu, Lightbulb, Sliders, Eye } from 'lucide-react';
 import { useRobotStore, FRCNodeData } from '../store/useRobotStore';
+import { NodeNumberField } from './NodeFields';
+import { DEFAULT_MOTOR_LIMIT_A, MOTOR_TYPES } from '../utils/hardwareValidation';
 
 const SINGLE_PORT_DEVICES: Record<string, { handle: string; label: string; isInput: boolean }> = {
   PWMServo: { handle: 'pwm-in', label: 'PWM Signal In', isInput: true },
@@ -110,7 +112,7 @@ export const StandardNode: React.FC<NodeProps> = ({ id, data }) => {
       return (
         <div className="flex items-center justify-between text-[9px] font-mono text-purple-400 bg-slate-950/90 px-2 py-1 rounded border border-purple-500/20 relative">
           <span>DIO Signal Output</span>
-          <span className="text-purple-300">Port #{nodeData.dioPort || 0}</span>
+          <NodeNumberField nodeId={id} field="dioPort" value={nodeData.dioPort} label="Port #" min={0} max={9} className="text-purple-300" />
           <Handle type="source" position={Position.Right} id="dio-out" className="w-3 h-3 !bg-purple-400 !border-2 !border-slate-950 rounded-full !right-[-11px]" />
         </div>
       );
@@ -123,7 +125,7 @@ export const StandardNode: React.FC<NodeProps> = ({ id, data }) => {
         <div className="flex items-center justify-between text-[9px] font-mono text-sky-400 bg-slate-950/90 px-2 py-1 rounded border border-sky-500/20 relative">
           {singlePort.isInput && <Handle type="target" position={Position.Left} id={singlePort.handle} className="w-3 h-3 !bg-sky-400 !border-2 !border-slate-950 rounded-full !left-[-11px]" />}
           <span>{singlePort.label}</span>
-          {nodeData.pwmPort !== undefined && <span className="text-purple-300">Port #{nodeData.pwmPort}</span>}
+          {nodeData.pwmPort !== undefined && <NodeNumberField nodeId={id} field="pwmPort" value={nodeData.pwmPort} label="Port #" min={0} max={9} className="text-purple-300" />}
           {!singlePort.isInput && <Handle type="source" position={Position.Right} id={singlePort.handle} className="w-3 h-3 !bg-sky-400 !border-2 !border-slate-950 rounded-full !right-[-11px]" />}
         </div>
       );
@@ -198,8 +200,14 @@ export const StandardNode: React.FC<NodeProps> = ({ id, data }) => {
 
       <div className="mt-2 pt-1.5 border-t border-slate-800/60 flex justify-between text-[9px] font-mono text-slate-500">
         <span>Protocol: {nodeData.protocol || 'CAN'}</span>
-        {nodeData.canId !== undefined && <span className="text-amber-400 font-bold">CAN ID: {nodeData.canId}</span>}
+        {nodeData.canId !== undefined && <NodeNumberField nodeId={id} field="canId" value={nodeData.canId} label="CAN ID:" min={0} max={62} />}
       </div>
+      {MOTOR_TYPES.includes(deviceType) && (
+        <div className="mt-1 flex justify-between items-center text-[9px] font-mono text-slate-500">
+          <span>Supply current limit</span>
+          <NodeNumberField nodeId={id} field="currentLimit" value={nodeData.currentLimit ?? DEFAULT_MOTOR_LIMIT_A} label="" ariaName="Supply current limit" unit="A" min={0} max={120} className="text-red-300" />
+        </div>
+      )}
     </div>
   );
 };

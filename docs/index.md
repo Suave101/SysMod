@@ -1,4 +1,6 @@
 # SysMod Studio
+
+<img src="img/logo.svg" alt="SysMod Studio logo" width="128">
 Welcome to the ASSIST Laboratory Systems Modeling Studio Documentation! This site contains everything you need to know to use the SysMod Studio Application.
 
 To get started working with the tool, [click here](./getting-started/installation.md)!

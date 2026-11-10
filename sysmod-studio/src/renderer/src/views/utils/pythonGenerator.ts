@@ -1,7 +1,19 @@
 import { Node, Edge } from '@xyflow/react';
 import { FRCNodeData } from '../store/useRobotStore';
+import { motorCurrentLimitA } from './hardwareValidation';
 
-export function generatePythonCode(nodes: Node<FRCNodeData>[], edges: Edge[]): string {
+/** REVLib 2025 controller class and motor type for each REV motor on the palette */
+export const REV_MOTORS: Record<string, { controller: 'SparkMax' | 'SparkFlex'; motorType: 'kBrushless' | 'kBrushed' }> = {
+  SparkMaxNEO: { controller: 'SparkMax', motorType: 'kBrushless' },
+  NEO550: { controller: 'SparkMax', motorType: 'kBrushless' },
+  BrushedController: { controller: 'SparkMax', motorType: 'kBrushed' },
+  NEOVortex: { controller: 'SparkFlex', motorType: 'kBrushless' },
+};
+
+/** Amps as a code literal: whole numbers stay whole, others keep one decimal */
+export const formatAmps = (amps: number): string => (Number.isInteger(amps) ? String(amps) : amps.toFixed(1));
+
+export function generatePythonCode(nodes: Node<FRCNodeData>[], _edges: Edge[]): string {
   const motors = nodes.filter((n) => ['KrakenX60', 'KrakenX44', 'Falcon500', 'SparkMaxNEO', 'NEOVortex', 'NEO550', 'PWMServo', 'BrushedController'].includes(n.data?.deviceType || ''));
   const sensors = nodes.filter((n) => ['CANcoder', 'Pigeon2', 'NavX2', 'ThroughBore', 'Limelight', 'PhotonVision', 'LimitSwitch', 'BeamBreak', 'TimeOfFlight', 'ColorSensor'].includes(n.data?.deviceType || ''));
   const pneumatics = nodes.filter((n) => ['SolenoidValve', 'Compressor', 'PressureSwitch'].includes(n.data?.deviceType || ''));
@@ -37,20 +49,28 @@ import commands2
   // Actuators Code
   if (motors.length > 0) {
     code += `        # ── Motor Actuators & Drive Controllers ──\n`;
+    code += `        # Supply current limits come from each motor on the SysMod architecture diagram\n`;
     motors.forEach((m) => {
       const varName = m.id;
-      const canId = m.data?.canId || 1;
-      const pwmPort = m.data?.pwmPort || 0;
+      const canId = m.data?.canId ?? 1;
+      const pwmPort = m.data?.pwmPort ?? 0;
       const dev = m.data?.deviceType;
+      const limit = motorCurrentLimitA(m);
 
       if (dev === 'KrakenX60' || dev === 'KrakenX44' || dev === 'Falcon500') {
         code += `        self.${varName} = phoenix6.hardware.TalonFX(${canId}${busArg})\n`;
-      } else if (dev === 'BrushedController') {
-        code += `        self.${varName} = rev.CANSparkMax(${canId}, rev.CANSparkLowLevel.MotorType.kBrushed)\n`;
-      } else if (dev === 'SparkMaxNEO' || dev === 'NEO550') {
-        code += `        self.${varName} = rev.CANSparkMax(${canId}, rev.CANSparkLowLevel.MotorType.kBrushless)\n`;
-      } else if (dev === 'NEOVortex') {
-        code += `        self.${varName} = rev.CANSparkFlex(${canId}, rev.CANSparkLowLevel.MotorType.kBrushless)\n`;
+        code += `        self.${varName}.configurator.apply(\n`;
+        code += `            phoenix6.configs.CurrentLimitsConfigs()\n`;
+        code += `            .with_supply_current_limit(${formatAmps(limit)})\n`;
+        code += `            .with_supply_current_limit_enable(True)\n`;
+        code += `        )\n`;
+      } else if (REV_MOTORS[dev]) {
+        const { controller, motorType } = REV_MOTORS[dev];
+        code += `        self.${varName} = rev.${controller}(${canId}, rev.SparkLowLevel.MotorType.${motorType})\n`;
+        // SPARK smart current limits cap motor current, which is never below supply current
+        code += `        ${varName}_config = rev.${controller}Config()\n`;
+        code += `        ${varName}_config.smartCurrentLimit(${Math.round(limit)})\n`;
+        code += `        self.${varName}.configure(${varName}_config, rev.SparkBase.ResetMode.kResetSafeParameters, rev.SparkBase.PersistMode.kPersistParameters)\n`;
       } else if (dev === 'PWMServo') {
         code += `        self.${varName} = wpilib.Servo(${pwmPort})\n`;
       }
@@ -62,8 +82,8 @@ import commands2
     code += `\n        # ── Sensors & Game Piece Detection ──\n`;
     sensors.forEach((s) => {
       const varName = s.id;
-      const canId = s.data?.canId || 1;
-      const dioPort = s.data?.dioPort || 0;
+      const canId = s.data?.canId ?? 1;
+      const dioPort = s.data?.dioPort ?? 0;
       const dev = s.data?.deviceType;
 
       if (dev === 'CANcoder') {
