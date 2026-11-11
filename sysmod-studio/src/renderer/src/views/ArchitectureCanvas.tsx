@@ -1,19 +1,21 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Award, Code2, FileText, Sigma, Terminal, Workflow, X } from 'lucide-react';
+import { Award, Blocks, Bot, Code2, FileText, Sigma, Terminal, Workflow, X } from 'lucide-react';
 import { FRC_DEVICE_DEFAULTS } from './store/useRobotStore';
 import { PdfPreviewModal } from './components/PdfPreviewModal';
 import { generateArchitectureReportHtml } from './utils/pdfGenerator';
 import { ActivityBar, SideView } from './workbench/ActivityBar';
-import { ComponentsView, ContractsView, ProjectView } from './workbench/SideBarViews';
+import { BehaviorView, ComponentsView, ContractsView, ProjectView } from './workbench/SideBarViews';
 import { ContractEditor, DiagramEditor, GENERATED_FILES, GeneratedFileEditor, GeneratedFileId, saveGeneratedFile } from './workbench/Editors';
 import { BottomPanel, collectProblems, PanelView, StatusBar } from './workbench/BottomPanel';
 import { scopeLabel, useWorkbenchModel } from './workbench/useWorkbenchModel';
 import { JudgeReport } from './workbench/JudgeReport';
+import { BehaviorEditor } from './workbench/BehaviorEditor';
 
 type EditorTab =
   | { id: 'diagram' }
   | { id: 'judges' }
+  | { id: 'behavior' }
   | { id: `file:${GeneratedFileId}`; file: GeneratedFileId }
   | { id: `contract:${string}`; scope: string };
 
@@ -21,6 +23,7 @@ const FILE_ICONS: Record<GeneratedFileId, React.ReactNode> = {
   aadl: <FileText className="w-3.5 h-3.5 text-indigo-400" />,
   python: <Terminal className="w-3.5 h-3.5 text-emerald-400" />,
   java: <Code2 className="w-3.5 h-3.5 text-amber-400" />,
+  soar: <Bot className="w-3.5 h-3.5 text-teal-400" />,
 };
 
 const DIAGRAM_TAB: EditorTab = { id: 'diagram' };
@@ -80,6 +83,7 @@ export default function App(): React.JSX.Element {
 
   const openContract = useCallback((scope: string) => openTab({ id: `contract:${scope}`, scope }), [openTab]);
   const openJudgeReport = useCallback(() => openTab({ id: 'judges' }), [openTab]);
+  const openBehavior = useCallback(() => openTab({ id: 'behavior' }), [openTab]);
   const openFile = useCallback((file: GeneratedFileId) => openTab({ id: `file:${file}`, file }), [openTab]);
 
   const closeTab = (id: EditorTab['id']): void => {
@@ -139,6 +143,7 @@ export default function App(): React.JSX.Element {
     if (tab.id === 'diagram') return { label: 'Architecture', icon: <Workflow className="w-3.5 h-3.5 text-sky-400" /> };
     if ('file' in tab) return { label: GENERATED_FILES[tab.file].fileName, icon: FILE_ICONS[tab.file] };
     if (tab.id === 'judges') return { label: 'Judge Report', icon: <Award className="w-3.5 h-3.5 text-amber-400" /> };
+    if (tab.id === 'behavior') return { label: 'Behavior', icon: <Blocks className="w-3.5 h-3.5 text-teal-400" /> };
     return { label: `${scopeLabel(tab.scope, FRC_DEVICE_DEFAULTS)}.agree`, icon: <Sigma className="w-3.5 h-3.5 text-emerald-400" /> };
   };
 
@@ -157,6 +162,7 @@ export default function App(): React.JSX.Element {
           <aside style={{ width: sideBar.size }} className="relative shrink-0 flex flex-col bg-slate-900 border-r border-slate-800" aria-label="Side bar">
             {sideView === 'components' && <ComponentsView />}
             {sideView === 'contracts' && <ContractsView model={model} onOpenAadl={() => openFile('aadl')} onOpenContract={openContract} />}
+            {sideView === 'behavior' && <BehaviorView onOpenEditor={openBehavior} onOpenFile={() => openFile('soar')} onSaveFile={() => saveGeneratedFile(GENERATED_FILES.soar, model.generated.soar)} />}
             {sideView === 'project' && (
               <ProjectView
                 onExportPdf={handleExportPdf}
@@ -222,6 +228,11 @@ export default function App(): React.JSX.Element {
             {'file' in activeTab && (
               <div className="absolute inset-0 z-10 bg-slate-950">
                 <GeneratedFileEditor key={activeTab.file} file={GENERATED_FILES[activeTab.file]} content={model.generated[activeTab.file]} />
+              </div>
+            )}
+            {activeTab.id === 'behavior' && (
+              <div className="absolute inset-0 z-10 bg-slate-950">
+                <BehaviorEditor model={model} onOpenFile={() => openFile('soar')} />
               </div>
             )}
             {activeTab.id === 'judges' && (

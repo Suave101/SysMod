@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
-import { Background, Connection, Controls, Edge, Node, NodeTypes, OnConnectEnd, ReactFlow, ReactFlowInstance } from '@xyflow/react';
+import { Background, Connection, Controls, Edge, Node, NodeTypes, OnConnectEnd, OnNodeDrag, ReactFlow, ReactFlowInstance } from '@xyflow/react';
 import { connectionProblem } from '../utils/connectionRules';
 import { Ban, Check, ChevronDown, ChevronRight, Copy, Download, Loader2, Play, ShieldCheck } from 'lucide-react';
 import { FRCNodeData, FRC_DEVICE_DEFAULTS, useRobotStore } from '../store/useRobotStore';
 import { ControlHubNode } from '../components/ControlHubNode';
 import { StandardNode } from '../components/StandardNode';
+import { SubsystemNode } from '../components/SubsystemNode';
+import { isSubsystem, SUBSYSTEM_NODE } from '../utils/subsystems';
 import { beforeMonacoMount, EDITOR_OPTIONS } from '../utils/monacoLanguages';
 import { getStandardDeviceContract, getStandardSystemContract, SYSTEM_SCOPE } from '../utils/agree/frcContracts';
 import { scopeLabel, WorkbenchModel } from './useWorkbenchModel';
@@ -67,10 +69,10 @@ interface DiagramEditorProps {
 }
 
 // Wrapped once, outside render, so React Flow never sees new node types
-const NODE_TYPES: NodeTypes = { ControlHub: withNodeAlerts(ControlHubNode), StandardNode: withNodeAlerts(StandardNode) };
+const NODE_TYPES: NodeTypes = { ControlHub: withNodeAlerts(ControlHubNode), StandardNode: withNodeAlerts(StandardNode), [SUBSYSTEM_NODE]: SubsystemNode };
 
 export const DiagramEditor: React.FC<DiagramEditorProps> = ({ isVisible, layoutKey, issues }) => {
-  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, removeEdge } = useRobotStore();
+  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, removeEdge, setDeviceSubsystem } = useRobotStore();
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<Node<FRCNodeData>, Edge> | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const alertsByNode = useMemo(() => issuesByNode(issues), [issues]);
@@ -90,6 +92,31 @@ export const DiagramEditor: React.FC<DiagramEditorProps> = ({ isVisible, layoutK
     observer.observe(canvasRef.current);
     return () => observer.disconnect();
   }, [layoutKey, flowInstance, isVisible]);
+
+  // Dropping a device with its center inside a subsystem frame puts it in that subsystem;
+  // dropping it outside every frame takes it out
+  const handleNodeDragStop: OnNodeDrag<Node<FRCNodeData>> = (_event, _node, dragged) => {
+    if (!flowInstance) return;
+    const box = (id: string) => {
+      const internal = flowInstance.getInternalNode(id);
+      if (!internal) return undefined;
+      const { x, y } = internal.internals.positionAbsolute;
+      return { x, y, width: internal.measured.width ?? internal.width ?? 0, height: internal.measured.height ?? internal.height ?? 0 };
+    };
+    const frames = nodes.filter(isSubsystem).map((f) => ({ id: f.id, rect: box(f.id) }));
+    dragged
+      .filter((n) => !isSubsystem(n))
+      .forEach((n) => {
+        const rect = box(n.id);
+        if (!rect) return;
+        const center = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+        // The last frame drawn is on top, so it wins when frames overlap
+        const target = [...frames].reverse().find(({ rect: f }) => f && center.x >= f.x && center.x <= f.x + f.width && center.y >= f.y && center.y <= f.y + f.height);
+        if ((target?.id ?? undefined) === n.parentId) return;
+        const origin = target?.rect ?? { x: 0, y: 0 };
+        setDeviceSubsystem(n.id, target?.id, { x: rect.x - origin.x, y: rect.y - origin.y });
+      });
+  };
 
   const handleEdgeClick = (_: React.MouseEvent, edge: Edge): void => {
     if (window.confirm(`Delete connection "${edge.label || 'Wire'}"?`)) removeEdge(edge.id);
@@ -140,6 +167,7 @@ export const DiagramEditor: React.FC<DiagramEditorProps> = ({ isVisible, layoutK
           onConnect={onConnect}
           isValidConnection={isValidConnection}
           onConnectEnd={handleConnectEnd}
+          onNodeDragStop={handleNodeDragStop}
           onEdgeClick={handleEdgeClick}
           onInit={setFlowInstance}
           nodeTypes={NODE_TYPES}
@@ -178,6 +206,7 @@ export const GENERATED_FILES = {
   aadl: { fileName: 'FRC_Robot_Architecture.aadl', language: 'aadl', folder: 'Model', description: 'AADL model' },
   python: { fileName: 'robot.py', language: 'python', folder: 'Robot code', description: 'RobotPy (Python)' },
   java: { fileName: 'Robot.java', language: 'java', folder: 'Robot code', description: 'WPILib (Java)' },
+  soar: { fileName: 'agent.soar', language: 'soar', folder: 'Behavior', description: 'Soar agent' },
 } satisfies Record<string, GeneratedFile>;
 
 export type GeneratedFileId = keyof typeof GENERATED_FILES;

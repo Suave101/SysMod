@@ -20,6 +20,14 @@ These run alongside the FRC wiring rules and the formal proofs. Like the wiring 
 
 Problems that were already there when you opened the diagram don't pop up. They're still on the badges and in the panels.
 
+Here two Shooter motors were given the same CAN ID. Both get a red ring and a badge, and an alert pops up with **Show on diagram**:
+
+![Two Kraken X60 motors with duplicate CAN ID 2, each with a red ring and badge, and a Duplicate CAN ID alert in the corner](assets/hardware-alerts.png)
+
+The **Hardware** panel shows the CAN bus load, the current on each PDH channel and the main breaker, and every ID and port, with the conflict at the top:
+
+![The Hardware panel with CAN bus load, current gauges and the IDs and ports table](assets/hardware-panel.png)
+
 ## Wires you can't draw
 
 Some wiring mistakes are impossible on a real robot, so the diagram won't let you make them at all. While you drag a wire, it turns red over a port it can't connect to, and letting go explains why.

@@ -5,6 +5,8 @@ Welcome to the ASSIST Laboratory Systems Modeling Studio Documentation! This sit
 
 To get started working with the tool, [click here](./getting-started/installation.md)!
 
+![The SysMod Studio workbench: the component palette on the left, a wired SystemCore robot with Ground Intake and Shooter subsystems on the architecture diagram, and the Problems panel below](assets/architecture-workbench.png)
+
 ## Overview
 
 As the aviation and defense sectors accelerate toward uncrewed aircraft systems (UAS), Advanced Air Mobility (AAM), and safety-critical autonomous flight, the aerospace industry faces an unprecedented shortage of engineers trained in Model-Based Systems Engineering (MBSE) and formal software/hardware verification. Developed by the ASSIST Laboratory at the Florida Institute of Technology (Florida Tech) under the NASA University Leadership Initiative (ULI) TRANSCEND project, SysMod Studio serves as a direct workforce development bridge. It transforms pre-college engineering experiences at FIRST Robotics Competitions (FRC) into a talent pipeline, equipping students with the exact MBSE workflows, formal verification methods and system architecture skills required for the future of autonomous aviation.
@@ -26,3 +28,7 @@ Traditional MBSE tools (e.g., Enterprise Architect, Cameo Systems Modeler) carry
 
 ### Solution Statement
 SysMod Studio connects high school FIRST Robotics strategy with aerospace-grade engineering rigor. Through a four-phase visual workflow, FRC students define physical bounds, execute trade studies, build graphical node-and-edge electrical/control architectures, run real-time rule checks, SysMod Studio White Paper ASSIST Laboratory and export production code (WPILib Java, Python) alongside formal Architecture Analysis & Design Language (AADL) models used in aviation safety analysis.
+
+| Plan the robot | Prove it's safe | Program its behavior |
+|---|---|---|
+| ![Design Brief page](assets/designBrief.png) | ![Judge Report with 6 of 6 properties proved](assets/judge-report.png) | ![Behavior editor with Soar blocks and the generated agent](assets/behavior-editor.png) |

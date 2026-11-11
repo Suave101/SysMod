@@ -84,6 +84,9 @@ jobs:
       - name: Check the hardware validation engine
         run: npm run test:hardware
 
+      - name: Check the behavior generator
+        run: npm run test:behavior
+
       - name: Prove the FRC standard contracts
         run: npm run test:proofs
 

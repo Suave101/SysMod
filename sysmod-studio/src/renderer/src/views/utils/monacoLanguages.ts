@@ -50,6 +50,28 @@ export const beforeMonacoMount: BeforeMount = (monaco) => {
     });
   }
 
+  if (!monaco.languages.getLanguages().some((l) => l.id === 'soar')) {
+    monaco.languages.register({ id: 'soar', extensions: ['.soar'], aliases: ['Soar'] });
+
+    monaco.languages.setMonarchTokensProvider('soar', {
+      defaultToken: '',
+      tokenizer: {
+        root: [
+          [/#.*$/, 'comment'],
+          [/\|(?:[^|\\]|\\.)*\|/, 'string'],
+          [/\b(?:sp|gp|state|impasse)\b/, 'keyword'],
+          [/-->/, 'keyword'],
+          [/<[A-Za-z0-9_-]+>/, 'number'],
+          [/\^[A-Za-z0-9_.*-]+/, 'operator'],
+          [/[+\-<>=!~@]/, 'operator'],
+          [/[{}()]/, 'delimiter'],
+          [/[A-Za-z0-9_*.-]+/, 'identifier'],
+          [/\s+/, 'white'],
+        ],
+      },
+    });
+  }
+
   monaco.editor.defineTheme('sysmod-dark', {
     base: 'vs-dark',
     inherit: true,

@@ -44,6 +44,20 @@ jobs:
       - name: Check the hardware validation engine
         run: npm run test:hardware
 
+      # Real Soar 9.6.5 checks that every generated behavior rule loads. Its CLI ships for Linux,
+      # so the Windows job checks the generator without it.
+      - name: Download Soar 9.6.5
+        if: runner.os == 'Linux'
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/soar.zip" https://github.com/SoarGroup/Soar/releases/download/releases/9.6.5/SoarSuite_9.6.5-Multiplatform.zip
+          unzip -q "$RUNNER_TEMP/soar.zip" -d "$RUNNER_TEMP/soar"
+          SOAR_BIN="$(dirname "$(find "$RUNNER_TEMP/soar" -path '*/bin/soar' -type f | head -n 1)")"
+          chmod +x "$SOAR_BIN/soar"
+          echo "SOAR_HOME=$SOAR_BIN" >> "$GITHUB_ENV"
+
+      - name: Check the behavior generator
+        run: npm run test:behavior
+
       - name: Compile JKind and bundle a Java runtime
         run: npm run build:jkind -- --rebuild
 

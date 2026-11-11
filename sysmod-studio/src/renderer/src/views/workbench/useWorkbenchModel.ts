@@ -7,6 +7,8 @@ import { buildContracts } from '../utils/agree/frcContracts';
 import { generateLustre, LustreProgram } from '../utils/agree/lustreGenerator';
 import { parseJKindXml, ProofResult } from '../utils/agree/jkindResults';
 import { explainProofs } from '../utils/agree/proofExplainer';
+import { generateSoar } from '../behavior/soarGenerator';
+import { isSubsystem, subsystemGroups } from '../utils/subsystems';
 
 export type WorkbenchModel = ReturnType<typeof useWorkbenchModel>;
 
@@ -15,17 +17,24 @@ export type WorkbenchModel = ReturnType<typeof useWorkbenchModel>;
  * Shared by the side bar, editors, bottom panel and status bar so they always agree.
  */
 export function useWorkbenchModel() {
-  const nodes = useRobotStore((state) => state.nodes);
+  const diagramNodes = useRobotStore((state) => state.nodes);
   const edges = useRobotStore((state) => state.edges);
   const customContracts = useRobotStore((state) => state.customContracts);
+  const behaviorBlocks = useRobotStore((state) => state.behaviorBlocks);
+
+  // Subsystem frames group devices but aren't hardware, so rule checks, contracts, proofs and
+  // the BOM only see the devices
+  const nodes = useMemo(() => diagramNodes.filter((n) => !isSubsystem(n)), [diagramNodes]);
+  const subsystems = useMemo(() => subsystemGroups(diagramNodes, behaviorBlocks), [diagramNodes, behaviorBlocks]);
 
   const contracts = useMemo(() => buildContracts(nodes, edges, customContracts), [nodes, edges, customContracts]);
-  const aadl = useMemo(() => generateAadlCode(nodes, edges, contracts), [nodes, edges, contracts]);
+  const aadl = useMemo(() => generateAadlCode(nodes, edges, contracts, subsystems), [nodes, edges, contracts, subsystems]);
   const hardware = useMemo(() => analyzeHardware(nodes, edges), [nodes, edges]);
+  const soar = useMemo(() => generateSoar(behaviorBlocks), [behaviorBlocks]);
   // Every generated file, keyed like GENERATED_FILES, so editor tabs update as you wire
   const generated = useMemo(
-    () => ({ aadl, python: generatePythonCode(nodes, edges), java: generateJavaCode(nodes, edges) }),
-    [aadl, nodes, edges],
+    () => ({ aadl, python: generatePythonCode(nodes, edges, subsystems), java: generateJavaCode(nodes, edges, subsystems), soar }),
+    [aadl, nodes, edges, subsystems, soar],
   );
   const report = useMemo(() => verifySystemProperties(nodes, edges, hardware), [nodes, edges, hardware]);
   const program = useMemo(() => generateLustre(nodes, edges, contracts), [nodes, edges, contracts]);
@@ -65,7 +74,9 @@ export function useWorkbenchModel() {
   }, [program]);
 
   return {
+    /** The devices on the diagram, without subsystem frames */
     nodes,
+    subsystems,
     edges,
     contracts,
     aadl,

@@ -8,9 +8,12 @@ import {
   OnConnect, 
   applyNodeChanges, 
   applyEdgeChanges, 
-  addEdge 
+  addEdge,
+  XYPosition,
 } from '@xyflow/react';
 import { connectionProblem } from '../utils/connectionRules';
+import { isSubsystem, renameInBehavior, SUBSYSTEM_NODE, SUBSYSTEM_TYPE, uniqueSubsystemLabel } from '../utils/subsystems';
+import { subsystemAttribute } from '../behavior/soarNames';
 import { CONTROLLER_CAN_HANDLES, CONTROLLERS, DEFAULT_CONTROLLER, findController, isControllerType } from '../utils/controllers';
 
 export type PortType = 'pwr12v' | 'pwr10a' | 'pwrRegulated' | 'can' | 'canfd' | 'eth' | 'pneumatic' | 'pwm' | 'dio' | 'rsl' | 'usb';
@@ -22,7 +25,8 @@ export const MAX_SWITCHED_CHANNELS = 1; // Port 23 (15A ATM Switchable)
 export interface FRCNodeData extends Record<string, unknown> {
   label: string;
   deviceType: string;
-  category: DeviceCategory;
+  /** Subsystem frames use 'Subsystem'; every device uses its palette category */
+  category: DeviceCategory | 'Subsystem';
   canId?: number;
   dioPort?: number;
   pwmPort?: number;
@@ -46,6 +50,12 @@ interface RobotStore {
   onEdgesChange: OnEdgesChange;
   onConnect: OnConnect;
   addDevice: (type: string) => void;
+  /** Adds a labeled subsystem frame, such as "Intake", that devices can be dragged into */
+  addSubsystem: (label?: string) => void;
+  /** Renames a subsystem, and moves behavior blocks that used its old name to the new one */
+  renameSubsystem: (id: string, label: string) => void;
+  /** Puts a device in a subsystem (or takes it out) at a position relative to its new parent */
+  setDeviceSubsystem: (id: string, subsystemId: string | undefined, position: XYPosition) => void;
   removeNode: (id: string) => void;
   removeEdge: (edgeId: string) => void;
   clearWorkspace: () => void;
@@ -54,6 +64,9 @@ interface RobotStore {
   /** Changes a device's settings, such as its CAN ID or current limit */
   updateNodeData: (id: string, patch: Partial<FRCNodeData>) => void;
   customContracts: Record<string, string>;
+  /** The behavior editor's blocks, as Blockly's JSON serialization */
+  behaviorBlocks: object | null;
+  setBehaviorBlocks: (state: object | null) => void;
   setCustomContract: (scope: string, text: string) => void;
   getPdhAllocations: () => {
     highMap: Map<number, { nodeId: string; deviceLabel: string }>;
@@ -148,6 +161,24 @@ function lowestUnused(used: (number | undefined)[], first: number, last: number)
 }
 
 let deviceCounter = 1;
+let subsystemCounter = 1;
+
+export const SUBSYSTEM_SIZE = { width: 440, height: 300 };
+
+/** React Flow needs every parent before its children, so frames always come first */
+const framesFirst = (nodes: Node<FRCNodeData>[]): Node<FRCNodeData>[] => [...nodes.filter(isSubsystem), ...nodes.filter((n) => !isSubsystem(n))];
+
+/** Takes the devices out of frames that are being deleted, leaving them where they are on screen */
+function releaseDevices(nodes: Node<FRCNodeData>[], frameIds: Set<string>): Node<FRCNodeData>[] {
+  if (frameIds.size === 0) return nodes;
+  const frames = new Map(nodes.filter((n) => frameIds.has(n.id)).map((n) => [n.id, n]));
+  return nodes.map((n) => {
+    const frame = n.parentId ? frames.get(n.parentId) : undefined;
+    if (!frame) return n;
+    const { parentId: _parentId, extent: _extent, ...rest } = n;
+    return { ...rest, position: { x: frame.position.x + n.position.x, y: frame.position.y + n.position.y } };
+  });
+}
 
 export const useRobotStore = create<RobotStore>((set, get) => ({
   nodes: [],
@@ -180,8 +211,12 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
   },
 
   onNodesChange: (changes) => {
+    // Deleting a subsystem frame (Backspace or Delete) keeps the devices inside it
+    const removedFrames = new Set(
+      changes.filter((c) => c.type === 'remove').map((c) => c.id).filter((id) => get().nodes.some((n) => n.id === id && isSubsystem(n))),
+    );
     set({
-      nodes: applyNodeChanges(changes, get().nodes) as Node<FRCNodeData>[],
+      nodes: applyNodeChanges(changes, releaseDevices(get().nodes, removedFrames)) as Node<FRCNodeData>[],
     });
   },
 
@@ -517,9 +552,51 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
     });
   },
 
-  removeNode: (id: string) => {
+  addSubsystem: (label) => {
+    const nodes = get().nodes;
+    const topLevel = nodes.filter((n) => !n.parentId);
+    // Below everything else, so a new frame never lands on top of devices
+    const bottom = topLevel.length ? Math.max(...topLevel.map((n) => n.position.y + (n.measured?.height ?? n.height ?? 200))) + 60 : 80;
+    const frame: Node<FRCNodeData> = {
+      id: `subsystem${subsystemCounter++}`,
+      type: SUBSYSTEM_NODE,
+      position: { x: 100, y: bottom },
+      ...SUBSYSTEM_SIZE,
+      data: { label: uniqueSubsystemLabel(nodes, label?.trim() || 'Subsystem'), deviceType: SUBSYSTEM_TYPE, category: 'Subsystem' },
+    };
+    set({ nodes: framesFirst([...nodes, frame]) });
+  },
+
+  renameSubsystem: (id, label) => {
+    const { nodes, behaviorBlocks } = get();
+    const frame = nodes.find((n) => n.id === id && isSubsystem(n));
+    const name = label.trim();
+    if (!frame || !name || name === frame.data.label) return;
+    const from = subsystemAttribute(frame.data.label);
+    // Only move the blocks when no other subsystem still answers to the old name
+    const shared = nodes.some((n) => n.id !== id && isSubsystem(n) && subsystemAttribute(n.data.label) === from);
     set({
-      nodes: get().nodes.filter((node) => node.id !== id),
+      nodes: nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, label: name } } : n)),
+      behaviorBlocks: shared ? behaviorBlocks : renameInBehavior(behaviorBlocks, from, subsystemAttribute(name)),
+    });
+  },
+
+  setDeviceSubsystem: (id, subsystemId, position) => {
+    set({
+      nodes: framesFirst(
+        get().nodes.map((n) => {
+          if (n.id !== id || isSubsystem(n)) return n;
+          const { parentId: _parentId, extent: _extent, ...rest } = n;
+          return subsystemId ? { ...rest, parentId: subsystemId, position } : { ...rest, position };
+        }),
+      ),
+    });
+  },
+
+  removeNode: (id: string) => {
+    const nodes = releaseDevices(get().nodes, new Set(get().nodes.some((n) => n.id === id && isSubsystem(n)) ? [id] : []));
+    set({
+      nodes: nodes.filter((node) => node.id !== id),
       edges: get().edges.filter((edge) => edge.source !== id && edge.target !== id),
     });
   },
@@ -530,5 +607,7 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
   updateNodeData: (id, patch) =>
     set({ nodes: get().nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)) }),
   customContracts: {},
+  behaviorBlocks: null,
+  setBehaviorBlocks: (state) => set({ behaviorBlocks: state }),
   setCustomContract: (scope, text) => set({ customContracts: { ...get().customContracts, [scope]: text } }),
 }));

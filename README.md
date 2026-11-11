@@ -70,7 +70,7 @@ We are currently building **Phase 1**, focusing on rapid architecture mapping an
 
 * **Phase 1 (Done):** Web-based node editor, PDF schematics, AADL syntax generation, and FTC/FRC Java hardware mapping.
 * **Phase 2 (Current, [Hardware Validation Engine](docs/hardware-validation.md)):** Active alerts for CAN bus saturation, current limit exceedances, and duplicate port IDs.
-* **Phase 3 (The Soar AI Coprocessor Bridge):** Integration with custom Alpine/Arch Linux AI coprocessors. SysMod will map data flows between the main robot controller and a Soar cognitive architecture agent for dynamic, safety-assured autonomous routines.
+* **Phase 3 (Started, [Robot Behavior](docs/robot-behavior.md)) (The Soar AI Coprocessor Bridge):** A block-based Soar behavior editor, ported from SoarBlocks, now generates `agent.soar` from the robot's own devices. Integration with custom Alpine/Arch Linux AI coprocessors. SysMod will map data flows between the main robot controller and a Soar cognitive architecture agent for dynamic, safety-assured autonomous routines.
 
 ---
 

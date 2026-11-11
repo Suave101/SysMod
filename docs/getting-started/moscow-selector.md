@@ -31,4 +31,4 @@ To reorder or reassign criteria between priority columns:
     Clear MoSCoW prioritization ensures that mechanical, software, and electrical sub-teams prioritize core functionality before attempting high-risk stretch goals.
 
 ## Navigating to the Decision Matrix
-Once your capabilities are prioritized into their respective tiers, click the purple `GO TO DECISION MATRIX →` button in the upper-right corner to proceed to subsystem selection and weighted evaluation.
+Once your capabilities are prioritized into their respective tiers, click the purple `GO TO DECISION MATRIX →` button in the upper-right corner to proceed to subsystem selection and weighted evaluation. See [Decision Matrix](decision-matrix.md).

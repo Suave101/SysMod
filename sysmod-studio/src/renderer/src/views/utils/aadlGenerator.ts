@@ -1,6 +1,7 @@
 import { Node, Edge } from '@xyflow/react';
 import { FRCNodeData } from '../store/useRobotStore';
 import type { AgreeContracts, ContractSource } from './agree/frcContracts';
+import { SubsystemGroup, subsystemOfDevice } from './subsystems';
 
 export type WireFamily = 'power' | 'can' | 'eth' | 'rsl' | 'dio' | 'usb' | 'pwm' | 'i2c' | 'mxp' | 'comp' | 'sol' | 'press';
 
@@ -136,9 +137,10 @@ function renderPort(handle: string, direction: 'in' | 'out'): string {
   return `      ${toAadlIdentifier(handle)}: ${direction} ${portKind} ${dataType};\n`;
 }
 
-function describeNode(node: Node<FRCNodeData>): string {
+function describeNode(node: Node<FRCNodeData>, subsystem?: string): string {
   const { label, canId, dioPort, pwmPort, powerChannel } = node.data;
   const facts = [label || node.id];
+  if (subsystem) facts.push(`subsystem ${subsystem}`);
   if (canId !== undefined) facts.push(`CAN ID ${canId}`);
   if (dioPort !== undefined) facts.push(`DIO ${dioPort}`);
   if (pwmPort !== undefined) facts.push(`PWM ${pwmPort}`);
@@ -220,7 +222,8 @@ function findBusNetworks(
  * a custom property set would need a second file. AGREE contracts, when given, are embedded as
  * annex subclauses so OSATE with the AGREE plugin checks the same contracts as SysMod.
  */
-export function generateAadlCode(nodes: Node<FRCNodeData>[], edges: Edge[], contracts?: AgreeContracts): string {
+export function generateAadlCode(nodes: Node<FRCNodeData>[], edges: Edge[], contracts?: AgreeContracts, subsystems: SubsystemGroup[] = []): string {
+  const owner = subsystemOfDevice(subsystems);
   const deviceTypes = [...new Set(nodes.map((n) => n.data?.deviceType || 'Component'))];
   const validEdges = edges.filter((e) => !isMismatchedWire(e));
   const skippedEdges = edges.filter(isMismatchedWire);
@@ -281,13 +284,24 @@ export function generateAadlCode(nodes: Node<FRCNodeData>[], edges: Edge[], cont
     aadl += `  end ${name};\n\n`;
   });
 
+  // Subsystems group devices on the diagram. Here they stay comments, so every wire keeps
+  // connecting devices directly and the contracts and proofs are unchanged.
+  if (subsystems.length > 0) {
+    aadl += `  -- Subsystems\n`;
+    subsystems.forEach((s) => {
+      const members = s.memberIds.map(toAadlIdentifier);
+      aadl += `  --   ${s.label}: ${members.length ? members.join(', ') : 'no devices yet'}\n`;
+    });
+    aadl += '\n';
+  }
+
   aadl += `  system FRC_Robot\n  end FRC_Robot;\n\n`;
   aadl += `  system implementation FRC_Robot.impl\n`;
 
   if (nodes.length + networks.length > 0) {
     aadl += `    subcomponents\n`;
     nodes.forEach((n) => {
-      aadl += `      -- ${describeNode(n)}\n`;
+      aadl += `      -- ${describeNode(n, owner.get(n.id)?.label)}\n`;
       aadl += `      ${toAadlIdentifier(n.id)}: device ${toAadlIdentifier(n.data?.deviceType || 'Component')};\n`;
     });
     networks.forEach((network) => {

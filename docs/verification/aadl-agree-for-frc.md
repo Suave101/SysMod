@@ -78,6 +78,8 @@ These contracts are always included, and you can't edit them. They appear in the
 3. Write AGREE statements under **Your contract**. Mistakes are underlined as you type and listed in **Problems**. Select a problem to jump to its contract.
 4. Select **Prove** in the editor, or **Prove contracts** in the **Proofs** panel.
 
+![The Kraken X60 Motor contract open in the editor: the built-in FRC standard contract on top, and the student's own assumption under Your contract](../assets/contract-editor.png)
+
 A contract on a component type applies to **every** component of that type. Inside it, use that component's port names, such as `pwr_12v_in`. Port names match the AADL model, with `-` replaced by `_`.
 
 In **Whole robot**, refer to a specific component by its id, a dot, then the port: `kraken6.pwr_12v_in`. The ids appear in each component's title on the canvas and in the AADL model.
@@ -116,6 +118,10 @@ Each assumption and lemma gets a result:
 - **Counterexample:** it can fail. The table shows the port values at each step, starting at step 0, with the failing component's ports first.
 - **Not proved in time:** JKind ran out of time. Simplify the contract, or try again.
 - **Contracts contradict:** the contracts can't all be true at once, so nothing about the robot can be trusted until you fix them.
+
+Here the Kraken example above fails. Nothing on the diagram promises the battery stays above 6.8 V, so JKind found a step where the motor's supply is 0 V:
+
+![The Proofs panel showing a counterexample for "Supply stays above brownout", with a table of port values at step 0](../assets/proofs-panel.png)
 
 A port with no wire into it can take **any** value. If a device's power input is not wired, its supply assumption fails. Fix the wiring first, using **Problems**.
 

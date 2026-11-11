@@ -1,12 +1,13 @@
 import React from 'react';
-import { ArrowLeft, Boxes, FolderTree, Share2 } from 'lucide-react';
+import { ArrowLeft, Bot, Boxes, FolderTree, Share2 } from 'lucide-react';
 import logoUrl from '../../assets/logo.svg';
 
-export type SideView = 'components' | 'contracts' | 'project';
+export type SideView = 'components' | 'contracts' | 'behavior' | 'project';
 
 const VIEWS: { id: SideView; label: string; icon: React.ReactNode }[] = [
   { id: 'components', label: 'Components', icon: <Boxes className="w-5 h-5" /> },
   { id: 'contracts', label: 'Model & Contracts', icon: <FolderTree className="w-5 h-5" /> },
+  { id: 'behavior', label: 'Behavior', icon: <Bot className="w-5 h-5" /> },
   { id: 'project', label: 'Export & Project', icon: <Share2 className="w-5 h-5" /> },
 ];
 

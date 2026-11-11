@@ -11,6 +11,8 @@ On the Architecture page, do either of these:
 
 The report opens as an editor tab. If you haven't proved anything yet, select **Prove and build the report**.
 
+![The Judge Report tab: "6 of 6 properties of our robot's electrical design are mathematically proved", followed by "Testing vs. proving, in one minute"](../assets/judge-report.png)
+
 | Button | What it does |
 |---|---|
 | **Prove again** | Re-runs the proofs. Use it after changing the diagram or a contract. The toolbar warns you when the report is out of date. |
