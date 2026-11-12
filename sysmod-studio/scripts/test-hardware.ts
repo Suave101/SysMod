@@ -5,7 +5,10 @@
 import { analyzeHardware, CAN_FRAMES_PER_SECOND, HardwareAnalysis } from '../src/renderer/src/views/utils/hardwareValidation';
 import { verifySystemProperties } from '../src/renderer/src/views/utils/systemVerifier';
 import { generateJavaCode, generatePythonCode } from '../src/renderer/src/views/utils/codeGenerators';
+import { writeFileSync } from 'fs';
 import { connectionProblem } from '../src/renderer/src/views/utils/connectionRules';
+import { buildWiringModel, compressRefs } from '../src/renderer/src/views/utils/wiringSchedule';
+import { generateArchitectureReportHtml, generateCadSchematicSVG } from '../src/renderer/src/views/utils/pdfGenerator';
 
 type TestNode = Parameters<typeof analyzeHardware>[0][number];
 type TestEdge = Parameters<typeof analyzeHardware>[1][number];
@@ -173,6 +176,61 @@ check('more than 6 Smart I/O devices is an error', tooMany.issues.some((i) => i.
 check('a navX can’t plug into SystemCore', verifySystemProperties([...core, node('navx', 'NavX2')], coreWires).issues.some((i) => i.id === 'no-mxp-navx'));
 check('two controllers is an error', verifySystemProperties([...core, node('rio', 'roboRIO')], coreWires).issues.some((i) => i.id === 'multiple-controllers'));
 check('a roboRIO robot gets the 2027 notice', verifySystemProperties(base, baseWires).issues.some((i) => i.id === 'legacy-roborio' && i.severity === 'info'));
+
+// ── Printable schematic (sheet 1 drawing, sheet 2 tables) ──
+const printNodes = [
+  node('battery', 'Battery12V'), node('breaker', 'MainBreaker120A'), node('pdh', 'PDH'), node('rio', 'roboRIO'),
+  node('radio', 'RadioSwitch'), node('rsl', 'RSL'),
+  node('m1', 'KrakenX60', { canId: 1 }), node('m2', 'KrakenX60', { canId: 2 }), node('m3', 'KrakenX60', { canId: 3, currentLimit: 25 }),
+];
+const printWires = [
+  wire('a', 'battery', 'pwr-battery-out', 'breaker', 'pwr-battery-in'),
+  wire('b', 'breaker', 'pwr-pdh-out', 'pdh', 'pwr-12v-in'),
+  pdhWire('p0', 'm1', 'high', 0), pdhWire('p1', 'm2', 'high', 1), pdhWire('p2', 'm3', 'high', 2),
+  pdhWire('p20', 'rio', 'low', 20), pdhWire('p21', 'radio', 'low', 21),
+  wire('c1', 'rio', 'can-start', 'm1', 'can-in'), wire('c2', 'm1', 'can-out', 'm2', 'can-in'), wire('c3', 'm2', 'can-out', 'm3', 'can-in'),
+  wire('e1', 'rio', 'eth-out', 'radio', 'eth-rio'), wire('r1', 'rio', 'rsl-out', 'rsl', 'rsl-in'),
+];
+const wiring = buildWiringModel(printNodes, printWires);
+const refOf = (id: string): string | undefined => wiring.refs.get(id);
+check('reference designators follow diagram order', ['battery', 'breaker', 'pdh', 'rio', 'radio', 'rsl', 'm1', 'm3'].map(refOf).join() === 'BT1,CB1,U1,U2,U3,DS1,M1,M3', printNodes.map((n) => refOf(n.id)));
+const krakenRow = wiring.bom.find((r) => r.deviceType === 'KrakenX60');
+check('identical parts share one BOM row', krakenRow?.qty === 3 && compressRefs(krakenRow.refs) === 'M1–M3', krakenRow);
+check('the BOM total matches the sum of parts', wiring.totalCost.toFixed(2) === '1613.97', wiring.totalCost);
+const wireBy = (edgeId: string) => wiring.wires.find((w) => w.edge.id === edgeId);
+check('the main feed is 6 AWG red/black', wireBy('a')?.awg === '6 AWG' && wireBy('b')?.awg === '6 AWG' && wireBy('a')?.color.startsWith('Red'), wireBy('a'));
+check('40 A motor feeds are 12 AWG on a 40A breaker', wireBy('p0')?.awg === '12 AWG' && wireBy('p0')?.channel?.protection.text === '40A Breaker', wireBy('p0'));
+check('a 25 A current limit gets a 30A breaker and 14 AWG', wireBy('p2')?.channel?.protection.text === '30A Breaker' && wireBy('p2')?.awg === '14 AWG', wireBy('p2'));
+check('roboRIO and radio get 10A fuses and 18 AWG', wireBy('p20')?.channel?.protection.text === '10A Fuse' && wireBy('p21')?.awg === '18 AWG', wireBy('p20'));
+check('CAN is 22 AWG yellow/green', wireBy('c1')?.awg === '22 AWG' && /Yellow.*Green/.test(wireBy('c1')?.color || ''), wireBy('c1'));
+check('wire IDs run main feed, PDH channels, then CAN', wiring.wires.slice(0, 8).map((w) => w.edge.id).join() === 'a,b,p0,p1,p2,p20,p21,c1', wiring.wires.map((w) => w.edge.id));
+const bus = wiring.canBuses[0];
+check('the CAN chain is walked in order from the roboRIO', bus?.order.join() === 'rio,m1,m2,m3', bus?.order);
+check('120Ω termination is only at the two bus ends', [...wiring.pinNotes.keys()].sort().join() === 'm3:can-out,rio:can-start', [...wiring.pinNotes.entries()]);
+const pdhMap = wiring.pdhMaps[0];
+check('the PDH map lists all 24 channels with 5 used', pdhMap?.rows.length === 24 && pdhMap.rows.filter((r) => r.nodeId).length === 5 && pdhMap.rows[21].nodeId === 'radio', pdhMap?.rows);
+check('the PDH prints one pin per used channel with its rating', wiring.pins.get('pdh')?.outputs.map((p) => p.label)[0] === 'CH 0 · 40A BREAKER (HIGH)', wiring.pins.get('pdh')?.outputs);
+const withPdhEnd = buildWiringModel(printNodes, [...printWires, wire('c4', 'm3', 'can-out', 'pdh', 'can-term')]);
+check('a bus ending at the PDH is terminated there, not at M3', [...withPdhEnd.pinNotes.keys()].sort().join() === 'pdh:can-term,rio:can-start', [...withPdhEnd.pinNotes.keys()]);
+
+const drawing = generateCadSchematicSVG(wiring, '1/1/2027');
+check('every wire is routed (no net flags needed)', drawing.flagged.length === 0 && drawing.traces.length === printWires.length, drawing.flagged);
+const crossings = drawing.traces.flatMap((t) =>
+  t.points.slice(1).flatMap((b, i) => {
+    const a = t.points[i];
+    const seg = { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) };
+    return drawing.boxes
+      .filter((box) => seg.x <= box.x + box.w && box.x <= seg.x + seg.w && seg.y <= box.y + box.h && box.y <= seg.y + seg.h)
+      .map((box) => `${t.id} over ${box.nodeId}`);
+  }),
+);
+check('no wire is drawn over a component', crossings.length === 0, crossings);
+const html = generateArchitectureReportHtml(printNodes, printWires);
+// Open this file in a browser to look at the printout
+writeFileSync('out/test/print-schematic.html', html);
+check('the title block counts both sheets', html.includes('SHEET 1 OF 2') && html.includes('SHEET 2 OF 2') && !html.includes('OF 1<'));
+check('the single-line note is on the drawing', html.includes('SINGLE-LINE DIAGRAM: ALL 12V POWER TRACES REPRESENT +12V / GND PAIRS'));
+check('the BOM has a total row', html.includes('<strong>Total</strong>') && html.includes('$1613.97'));
 
 console.log(failures ? `${failures} FAILED` : 'All hardware checks passed');
 process.exit(failures ? 1 : 0);

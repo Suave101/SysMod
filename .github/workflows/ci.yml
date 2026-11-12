@@ -51,9 +51,12 @@ jobs:
         run: |
           curl -fsSL -o "$RUNNER_TEMP/soar.zip" https://github.com/SoarGroup/Soar/releases/download/releases/9.6.5/SoarSuite_9.6.5-Multiplatform.zip
           unzip -q "$RUNNER_TEMP/soar.zip" -d "$RUNNER_TEMP/soar"
-          SOAR_BIN="$(dirname "$(find "$RUNNER_TEMP/soar" -path '*/bin/soar' -type f | head -n 1)")"
-          chmod +x "$SOAR_BIN/soar"
-          echo "SOAR_HOME=$SOAR_BIN" >> "$GITHUB_ENV"
+          SUITE="$(dirname "$(find "$RUNNER_TEMP/soar" -name setup.sh -type f | head -n 1)")"
+          if [ ! -f "$SUITE/setup.sh" ]; then echo "::error::setup.sh not found in the Soar zip"; exit 1; fi
+          # The zip keeps each platform's binaries in bin/<platform>/; setup.sh moves the Linux ones into bin/
+          bash "$SUITE/setup.sh"
+          chmod +x "$SUITE/bin/soar"
+          echo "SOAR_HOME=$SUITE/bin" >> "$GITHUB_ENV"
 
       # On Linux this also runs the conformance tests: the behavior simulator against real Soar,
       # loop by loop, through Soar's Python SML (python3 and the suite's own SML module)
