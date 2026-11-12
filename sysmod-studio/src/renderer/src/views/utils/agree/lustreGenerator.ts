@@ -101,12 +101,12 @@ tel;
 
 const BINARY_OPERATORS: Record<string, string> = { '<=>': '=' };
 
-interface Scope {
+export interface Scope {
   name: string;
   resolve: (path: string[]) => MathExpr | undefined;
 }
 
-function toMath(expr: AgreeExpr, scope: Scope, errors: ContractError[]): MathExpr {
+export function toMath(expr: AgreeExpr, scope: Scope, errors: ContractError[]): MathExpr {
   switch (expr.kind) {
     case 'bool':
       return expr;

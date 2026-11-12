@@ -55,7 +55,9 @@ jobs:
           chmod +x "$SOAR_BIN/soar"
           echo "SOAR_HOME=$SOAR_BIN" >> "$GITHUB_ENV"
 
-      - name: Check the behavior generator
+      # On Linux this also runs the conformance tests: the behavior simulator against real Soar,
+      # loop by loop, through Soar's Python SML (python3 and the suite's own SML module)
+      - name: Check the behavior generator and simulator
         run: npm run test:behavior
 
       - name: Compile JKind and bundle a Java runtime

@@ -207,6 +207,7 @@ export const GENERATED_FILES = {
   python: { fileName: 'robot.py', language: 'python', folder: 'Robot code', description: 'RobotPy (Python)' },
   java: { fileName: 'Robot.java', language: 'java', folder: 'Robot code', description: 'WPILib (Java)' },
   soar: { fileName: 'agent.soar', language: 'soar', folder: 'Behavior', description: 'Soar agent' },
+  agentAadl: { fileName: 'Soar_Agent.aadl', language: 'aadl', folder: 'Behavior', description: 'Agent model for proofs' },
 } satisfies Record<string, GeneratedFile>;
 
 export type GeneratedFileId = keyof typeof GENERATED_FILES;

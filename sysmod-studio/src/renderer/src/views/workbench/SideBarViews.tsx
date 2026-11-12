@@ -225,6 +225,7 @@ const FILE_ROWS: { id: GeneratedFileId; icon: React.ReactNode }[] = [
   { id: 'java', icon: <Code2 className="w-3.5 h-3.5 text-amber-400" /> },
   { id: 'aadl', icon: <FileText className="w-3.5 h-3.5 text-indigo-400" /> },
   { id: 'soar', icon: <Bot className="w-3.5 h-3.5 text-teal-400" /> },
+  { id: 'agentAadl', icon: <FileText className="w-3.5 h-3.5 text-teal-400" /> },
 ];
 
 /** A generated file: select it to open it as a tab, or save it with the icon on the right */
@@ -257,8 +258,8 @@ const ProjectButton: React.FC<{ onClick: () => void; icon: React.ReactNode; labe
 
 interface BehaviorViewProps {
   onOpenEditor: () => void;
-  onOpenFile: () => void;
-  onSaveFile: () => void;
+  onOpenFile: (file: 'soar' | 'agentAadl') => void;
+  onSaveFile: (file: 'soar' | 'agentAadl') => void;
 }
 
 export const BehaviorView: React.FC<BehaviorViewProps> = ({ onOpenEditor, onOpenFile, onSaveFile }) => (
@@ -270,7 +271,11 @@ export const BehaviorView: React.FC<BehaviorViewProps> = ({ onOpenEditor, onOpen
         from the University of Michigan that has been used for decades in robots and simulated pilots.
       </p>
       <ProjectButton onClick={onOpenEditor} icon={<Blocks className="w-3.5 h-3.5 text-teal-400" />} label="Open behavior editor" />
-      <GeneratedFileRow id="soar" icon={<Bot className="w-3.5 h-3.5 text-teal-400" />} onOpen={onOpenFile} onSave={onSaveFile} />
+      <GeneratedFileRow id="soar" icon={<Bot className="w-3.5 h-3.5 text-teal-400" />} onOpen={() => onOpenFile('soar')} onSave={() => onSaveFile('soar')} />
+      <GeneratedFileRow id="agentAadl" icon={<FileText className="w-3.5 h-3.5 text-teal-400" />} onOpen={() => onOpenFile('agentAadl')} onSave={() => onSaveFile('agentAadl')} />
+      <p className="text-[10px] text-slate-500 px-1">
+        To prove facts about the agent, open the editor and choose <b className="text-slate-300">Properties</b>.
+      </p>
     </div>
     <SectionHeader title="How a rule works" />
     <ol className="px-4 pl-7 space-y-1 text-[11px] text-slate-400 list-decimal">

@@ -39,7 +39,15 @@ export function collectProblems(model: WorkbenchModel): Problem[] {
     detail: issue.message,
     source: 'FRC Rules',
   }));
-  return [...agree, ...rules];
+  // Things in the blocks that stall the agent or that Soar ignores, and properties about commands no rule sends
+  const behavior: Problem[] = (model.behavior.hasRules ? model.behavior.agent.warnings : []).map((w, idx) => ({
+    key: `behavior-${idx}`,
+    severity: 'warning',
+    title: w,
+    detail: 'Behavior blocks',
+    source: 'Behavior',
+  }));
+  return [...agree, ...rules, ...behavior];
 }
 
 const SEVERITY_ICONS = {

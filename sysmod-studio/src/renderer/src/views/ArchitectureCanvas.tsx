@@ -24,6 +24,7 @@ const FILE_ICONS: Record<GeneratedFileId, React.ReactNode> = {
   python: <Terminal className="w-3.5 h-3.5 text-emerald-400" />,
   java: <Code2 className="w-3.5 h-3.5 text-amber-400" />,
   soar: <Bot className="w-3.5 h-3.5 text-teal-400" />,
+  agentAadl: <FileText className="w-3.5 h-3.5 text-teal-400" />,
 };
 
 const DIAGRAM_TAB: EditorTab = { id: 'diagram' };
@@ -162,7 +163,7 @@ export default function App(): React.JSX.Element {
           <aside style={{ width: sideBar.size }} className="relative shrink-0 flex flex-col bg-slate-900 border-r border-slate-800" aria-label="Side bar">
             {sideView === 'components' && <ComponentsView />}
             {sideView === 'contracts' && <ContractsView model={model} onOpenAadl={() => openFile('aadl')} onOpenContract={openContract} />}
-            {sideView === 'behavior' && <BehaviorView onOpenEditor={openBehavior} onOpenFile={() => openFile('soar')} onSaveFile={() => saveGeneratedFile(GENERATED_FILES.soar, model.generated.soar)} />}
+            {sideView === 'behavior' && <BehaviorView onOpenEditor={openBehavior} onOpenFile={openFile} onSaveFile={(file) => saveGeneratedFile(GENERATED_FILES[file], model.generated[file])} />}
             {sideView === 'project' && (
               <ProjectView
                 onExportPdf={handleExportPdf}

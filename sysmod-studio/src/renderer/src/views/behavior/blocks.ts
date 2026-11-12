@@ -163,7 +163,7 @@ export const BLOCKS: Record<string, { init: (this: Blockly.Block) => void }> = {
       this.appendDummyInput().appendField('if robot mode is').appendField(new Blockly.FieldTextInput('autonomous'), 'agent_state');
       this.setPreviousStatement(true, TYPE_CONDITION);
       this.setNextStatement(true, TYPE_CONDITION);
-      this.setTooltip('True when the agent’s mode matches, such as autonomous or teleop');
+      this.setTooltip('True in this Driver Station mode: disabled, autonomous, teleop or test');
       this.setColour(COLOURS.condition);
     },
   },

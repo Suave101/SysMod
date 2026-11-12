@@ -4,6 +4,7 @@ import { formatAmps, generatePythonCode, REV_MOTORS } from './pythonGenerator';
 import { generateAadlCode } from './aadlGenerator';
 import { motorCurrentLimitA } from './hardwareValidation';
 import { SubsystemGroup, subsystemOfDevice } from './subsystems';
+import { deviceAttribute, deviceCommandLine, readingLine, SoarAgentInfo, unknownCommandNames } from './soarBridgeCode';
 
 export { generatePythonCode, generateAadlCode };
 
@@ -98,9 +99,16 @@ function declare(devices: JavaDevice[]): { fields: string[]; init: string[] } {
   return { fields: devices.map((d) => d.field), init };
 }
 
+/** The Soar bridge calls a subsystem or device can make, for one container (a subsystem or Robot) */
+function javaSoarCalls(members: Node<FRCNodeData>[], agent: SoarAgentInfo): { connect: string[]; send: string[] } {
+  const connect = members.filter((n) => agent.commands.has(deviceAttribute(n))).map((n) => deviceCommandLine(n, javaName(n.id), 'java', 'soar'));
+  const send = members.map((n) => readingLine(n, javaName(n.id), 'java', 'soar')).filter((l): l is string => !!l);
+  return { connect, send };
+}
+
 /** A subsystem as a WPILib command-based subsystem that owns its devices */
-function javaSubsystem(group: SubsystemGroup, devices: JavaDevice[]): string[] {
-  const { fields, init } = declare(devices);
+function javaSubsystem(group: SubsystemGroup, members: Node<FRCNodeData>[], declared: Map<string, JavaDevice>, agent?: SoarAgentInfo): string[] {
+  const { fields, init } = declare(members.map((n) => declared.get(n.id) as JavaDevice));
   const lines = [
     '/**',
     ` * The ${group.label} subsystem from the SysMod architecture diagram.`,
@@ -108,29 +116,62 @@ function javaSubsystem(group: SubsystemGroup, devices: JavaDevice[]): string[] {
     ' */',
     `public static class ${group.className} extends SubsystemBase {`,
     ...indent(fields, 2),
-    ...(fields.length ? [''] : []),
+    '  /** The last state the Soar agent set, sent back to it as ^' + group.attribute + ' */',
+    '  private String state = "none";',
+    '',
     `  public ${group.className}() {`,
     ...indent(init, 4),
     '  }',
     '',
     `  /** Runs a command the Soar agent sends to ^${group.attribute} */`,
     '  public void setState(String state) {',
+    '    this.state = state;',
     '    switch (state) {',
   ];
   group.commands.forEach((command) => {
     lines.push(`      case ${JSON.stringify(command)}:`, `        // TODO: what ${group.label} does for ${JSON.stringify(command)}`, '        break;');
   });
   if (group.commands.length === 0) lines.push('      // The behavior editor doesn’t send this subsystem any commands yet');
-  lines.push('      default:', '        break;', '    }', '  }', '}');
+  lines.push('      default:', '        break;', '    }', '  }', '', '  public String getState() {', '    return state;', '  }');
+  if (agent) {
+    const { connect, send } = javaSoarCalls(members, agent);
+    lines.push(
+      '',
+      '  /** Lets the Soar agent command this subsystem, and any of its devices it commands directly */',
+      '  public void connectSoar(SoarBridge soar) {',
+      `    soar.onCommand(${JSON.stringify(group.attribute)}, c -> setState(c.getString("state")));`,
+      ...indent(connect, 4),
+      '  }',
+      '',
+      '  /** Sends this subsystem’s state and its devices’ readings to the Soar agent */',
+      '  public void sendSoarInputs(SoarBridge soar) {',
+      `    soar.setString(${JSON.stringify(group.attribute)}, state);`,
+      ...indent(send, 4),
+      '  }',
+    );
+  }
+  lines.push('}');
   return lines;
 }
+
+const JAVA_MATCH_MODE = [
+  '/** The Driver Station mode, as the Soar agent reads it from ^io.input-link.match.mode */',
+  'private static String matchMode() {',
+  '  if (DriverStation.isDisabled()) return "disabled";',
+  '  if (DriverStation.isAutonomous()) return "autonomous";',
+  '  if (DriverStation.isTeleop()) return "teleop";',
+  '  return "test";',
+  '}',
+];
 
 /**
  * Generates a WPILib Robot.java that creates every device on the diagram with its CAN ID or
  * port, and applies each motor's supply current limit from the diagram. Each subsystem frame
- * becomes a SubsystemBase class that owns the devices inside it.
+ * becomes a SubsystemBase class that owns the devices inside it. With a Soar agent, Robot also
+ * runs it through the FRC-Soar bridge: it sends the robot's state every loop and passes each
+ * command the agent sends to the subsystem or device it names.
  */
-export function generateJavaCode(nodes: Node<FRCNodeData>[], _edges: Edge[], subsystems: SubsystemGroup[] = []): string {
+export function generateJavaCode(nodes: Node<FRCNodeData>[], _edges: Edge[], subsystems: SubsystemGroup[] = [], agent?: SoarAgentInfo): string {
   const ordered = DECLARATION_ORDER.flatMap((type) => nodes.filter((n) => n.data?.deviceType === type));
   const solenoids = ordered.filter((n) => n.data.deviceType === 'SolenoidValve').map((n) => n.id);
   const declared = new Map<string, JavaDevice>();
@@ -144,10 +185,10 @@ export function generateJavaCode(nodes: Node<FRCNodeData>[], _edges: Edge[], sub
   declared.forEach((d) => d.imports.forEach((i) => imports.add(i)));
   if (subsystems.length > 0) imports.add('edu.wpi.first.wpilibj2.command.SubsystemBase').add('edu.wpi.first.wpilibj2.command.CommandScheduler');
 
-  const robotDevices = ordered.filter((n) => declared.has(n.id) && !owner.has(n.id)).map((n) => declared.get(n.id) as JavaDevice);
-  const { fields, init } = declare(robotDevices);
+  const robotMembers = ordered.filter((n) => declared.has(n.id) && !owner.has(n.id));
+  const { fields, init } = declare(robotMembers.map((n) => declared.get(n.id) as JavaDevice));
   const classes = subsystems.map((group) =>
-    javaSubsystem(group, ordered.filter((n) => declared.has(n.id) && owner.get(n.id)?.id === group.id).map((n) => declared.get(n.id) as JavaDevice)),
+    javaSubsystem(group, ordered.filter((n) => declared.has(n.id) && owner.get(n.id)?.id === group.id), declared, agent),
   );
   const subsystemFields = subsystems.map((g) => `private final ${g.className} ${g.javaField} = new ${g.className}();`);
 
@@ -155,13 +196,52 @@ export function generateJavaCode(nodes: Node<FRCNodeData>[], _edges: Edge[], sub
   classes.forEach((lines) => body.push(...lines, ''));
   if (subsystemFields.length) body.push(...subsystemFields, '');
   if (fields.length) body.push(...fields, '');
-  body.push('@Override', 'public void robotInit() {', ...indent(init, 2), '}', '');
-  if (subsystems.length > 0) {
-    body.push('@Override', 'public void robotPeriodic() {', '  // Runs each subsystem’s periodic() and any scheduled commands', '  CommandScheduler.getInstance().run();', '}', '');
-  } else {
-    body.push('@Override', 'public void robotPeriodic() {}', '');
+
+  const periodic: string[] = [];
+  if (agent) {
+    imports.add('frc.soar.SoarBridge').add('edu.wpi.first.wpilibj.DriverStation').add('edu.wpi.first.wpilibj.Filesystem').add('java.io.File');
+    // Devices that aren't in a subsystem, and names the agent commands that aren't on the diagram
+    const { connect, send } = javaSoarCalls(robotMembers, agent);
+    const known = new Set([...subsystems.map((g) => g.attribute), ...ordered.map(deviceAttribute)]);
+    const onDiagram = new Set(nodes.map(deviceAttribute));
+    const unknown = unknownCommandNames(agent, known).map(
+      (name) =>
+        `soar.onCommand(${JSON.stringify(name)}, c -> {});  // TODO: the agent commands ^${name}, ${onDiagram.has(name) ? 'which Robot.java doesn’t create' : 'which isn’t on the diagram'}`,
+    );
+    body.push(
+      '/** Runs agent.soar from SysMod Studio. Save it into src/main/deploy so it is deployed with the code. */',
+      'private final SoarBridge soar = new SoarBridge(new File(Filesystem.getDeployDirectory(), "agent.soar").getPath());',
+      '',
+    );
+    init.push(
+      ...(init.length ? [''] : []),
+      '// Each name the Soar agent commands needs a handler, or the bridge rejects the command',
+      ...subsystems.map((g) => `${g.javaField}.connectSoar(soar);`),
+      ...connect,
+      ...unknown,
+      'try {',
+      '  soar.start();',
+      '} catch (IllegalStateException e) {',
+      '  DriverStation.reportError("Soar agent did not start: " + e.getMessage(), false);',
+      '}',
+    );
+    periodic.push(
+      '// Send the robot’s state to the Soar agent',
+      'if (soar.isRunning()) {',
+      '  soar.setString("match.mode", matchMode());',
+      ...subsystems.map((g) => `  ${g.javaField}.sendSoarInputs(soar);`),
+      ...indent(send, 2),
+      '  soar.sendInputs();',
+      '}',
+    );
   }
+  if (subsystems.length > 0) periodic.push(...(periodic.length ? [''] : []), '// Runs each subsystem’s periodic() and any scheduled commands', 'CommandScheduler.getInstance().run();');
+  if (agent) periodic.push('', '// Carry out the commands the agent has decided on', 'if (soar.isRunning()) {', '  soar.dispatchCommands();', '}');
+
+  body.push('@Override', 'public void robotInit() {', ...indent(init, 2), '}', '');
+  body.push(...(periodic.length ? ['@Override', 'public void robotPeriodic() {', ...indent(periodic, 2), '}'] : ['@Override', 'public void robotPeriodic() {}']), '');
   body.push('@Override', 'public void teleopPeriodic() {}');
+  if (agent) body.push('', ...JAVA_MATCH_MODE);
 
   let code = 'package frc.robot;\n\n';
   code += [...imports].sort().map((i) => `import ${i};`).join('\n');

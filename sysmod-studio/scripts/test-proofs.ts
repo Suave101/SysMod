@@ -11,6 +11,9 @@ import { explainProofs } from '../src/renderer/src/views/utils/agree/proofExplai
 import { mathToText } from '../src/renderer/src/views/utils/agree/proofNotation';
 import { renderJudgeReportHtml } from '../src/renderer/src/views/utils/agree/judgeReport';
 import { generateAadlCode } from '../src/renderer/src/views/utils/aadlGenerator';
+import { agentLustreName, AgentRun, agentTrace, compileAgentAgree, compileAgentLustre, describeReading } from '../src/renderer/src/views/behavior/agentAgree';
+import { buildBehaviorModel } from '../src/renderer/src/views/behavior/behaviorModel';
+import { domainProgram, domainProgramDomains, domainProperties, intakeProgram, intakeProperties } from './agentFixtures';
 
 // The runner only needs electron for app.isPackaged and IPC registration
 const moduleWithLoad = Module as unknown as { _load: (request: string, ...rest: unknown[]) => unknown };
@@ -140,6 +143,61 @@ async function main(): Promise<void> {
     'the Judge Report renders every proof',
     html.startsWith('<!doctype html>') && explained.every((_, i) => html.includes(`id="proof-${i + 1}"`)) && html.includes('∎') && html.includes('Team 0000') && html.includes('Panther Robotics'),
   );
+
+  // The Soar agent: properties of the behavior blocks (agentAgree.ts)
+  const intake = compileAgentAgree(buildBehaviorModel(intakeProgram), intakeProperties.map((p) => p.property));
+  const agentProgram = compileAgentLustre(intake);
+  check('the agent compiles to Lustre', agentProgram.errors.length === 0, JSON.stringify(agentProgram.errors));
+  const agentRun = await runJKind(agentProgram.lustre, 120);
+  const agentResults = parseJKindXml(agentRun.xml || '');
+  check('JKind runs on the agent', agentRun.success, agentRun.error);
+  intakeProperties.forEach(({ property, answer }, i) => {
+    const guarantee = agentProgram.guarantees[i];
+    const result = agentResults.find((r) => r.property === guarantee.lustreName);
+    check(`agent: “${intake.obligations[i].description}” is ${answer}`, result?.answer === answer, JSON.stringify([property, result?.answer]));
+  });
+
+  // A counterexample is a run of the agent: replayed through the AGREE equations, it breaks the guarantee
+  const closedIndex = intakeProperties.findIndex((p) => p.property.kind === 'can-happen' && p.property.command.device === 'intake');
+  const closed = agentResults.find((r) => r.property === agentProgram.guarantees[closedIndex].lustreName);
+  const signals = closed?.counterexample?.signals || [];
+  const signal = (name: string) => signals.find((s) => s.name === agentLustreName(name));
+  const steps = closed?.counterexample?.steps || 0;
+  const replay = new AgentRun(agentProgram);
+  for (let k = 0; k < steps; k++) replay.step((name) => signal(name)?.values[k] ?? 0);
+  check(
+    'the counterexample replays through the AGREE equations and breaks the guarantee at its last step',
+    steps > 0 && replay.get(agentProgram.guarantees[closedIndex].name) === false && [...Array(steps).keys()].every((k) => replay.assumptionsHold(k)),
+    JSON.stringify(signals.map((s) => [s.name, s.values])),
+  );
+  const beam = intake.inputs.find((i) => i.attribute === 'beam-break');
+  const last = steps - 1;
+  check(
+    'the counterexample reads back in the student’s words',
+    !!beam && describeReading(beam, Number(signal('in_beam_break_kind')?.values[last]), Number(signal('in_beam_break_code')?.values[last])) === 'blocked' && signal('in_mode_autonomous')?.values[last] === true,
+    JSON.stringify(signals.map((s) => [s.name, s.values])),
+  );
+  const story = agentTrace(intake, agentProgram, signals, steps, agentProgram.guarantees[closedIndex].name);
+  const end = story[story.length - 1];
+  check(
+    'the counterexample tells its story loop by loop: autonomous, beam blocked, hold sends intake → closed',
+    !!end && end.holds === false && end.mode === 'autonomous' && end.decision.startsWith('hold') && end.sent.includes('intake → closed') &&
+      end.readings.some((r) => r.attribute === 'beam-break' && r.text === 'blocked') && end.last.some((l) => l.device === 'intake' && l.value === 'closed'),
+    JSON.stringify(story),
+  );
+  fs.writeFileSync('out/test/agent.lus', agentProgram.lustre);
+
+  // Readings tied to the diagram: commands that need a reading the device never sends can't happen
+  for (const [index, domains] of [[0, undefined], [1, domainProgramDomains]] as const) {
+    const agent = compileAgentAgree(buildBehaviorModel(domainProgram), domainProperties.map((p) => p.property), domains);
+    const program = compileAgentLustre(agent);
+    const run = await runJKind(program.lustre, 120);
+    const results = parseJKindXml(run.xml || '');
+    domainProperties.forEach(({ answers }, i) => {
+      const result = results.find((r) => r.property === program.guarantees[i].lustreName);
+      check(`${domains ? 'with' : 'without'} reading domains: “${agent.obligations[i].description.split('?')[0]}?” is ${answers[index]}`, result?.answer === answers[index], `${result?.answer} ${run.error ?? ''}`);
+    });
+  }
 
   console.log(failures ? `${failures} FAILED` : 'All proof checks passed');
   process.exit(failures ? 1 : 0);

@@ -14,6 +14,7 @@ import {
 import { connectionProblem } from '../utils/connectionRules';
 import { isSubsystem, renameInBehavior, SUBSYSTEM_NODE, SUBSYSTEM_TYPE, uniqueSubsystemLabel } from '../utils/subsystems';
 import { subsystemAttribute } from '../behavior/soarNames';
+import { AgentProperty, renameInProperties } from '../behavior/agentProperties';
 import { CONTROLLER_CAN_HANDLES, CONTROLLERS, DEFAULT_CONTROLLER, findController, isControllerType } from '../utils/controllers';
 
 export type PortType = 'pwr12v' | 'pwr10a' | 'pwrRegulated' | 'can' | 'canfd' | 'eth' | 'pneumatic' | 'pwm' | 'dio' | 'rsl' | 'usb';
@@ -67,6 +68,9 @@ interface RobotStore {
   /** The behavior editor's blocks, as Blockly's JSON serialization */
   behaviorBlocks: object | null;
   setBehaviorBlocks: (state: object | null) => void;
+  /** Facts about the behavior to prove (Behavior tab, Properties) */
+  behaviorProperties: AgentProperty[];
+  setBehaviorProperties: (properties: AgentProperty[]) => void;
   setCustomContract: (scope: string, text: string) => void;
   getPdhAllocations: () => {
     highMap: Map<number, { nodeId: string; deviceLabel: string }>;
@@ -568,7 +572,7 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
   },
 
   renameSubsystem: (id, label) => {
-    const { nodes, behaviorBlocks } = get();
+    const { nodes, behaviorBlocks, behaviorProperties } = get();
     const frame = nodes.find((n) => n.id === id && isSubsystem(n));
     const name = label.trim();
     if (!frame || !name || name === frame.data.label) return;
@@ -578,6 +582,7 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
     set({
       nodes: nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, label: name } } : n)),
       behaviorBlocks: shared ? behaviorBlocks : renameInBehavior(behaviorBlocks, from, subsystemAttribute(name)),
+      behaviorProperties: shared ? behaviorProperties : renameInProperties(behaviorProperties, from, subsystemAttribute(name)),
     });
   },
 
@@ -609,5 +614,7 @@ export const useRobotStore = create<RobotStore>((set, get) => ({
   customContracts: {},
   behaviorBlocks: null,
   setBehaviorBlocks: (state) => set({ behaviorBlocks: state }),
+  behaviorProperties: [],
+  setBehaviorProperties: (properties) => set({ behaviorProperties: properties }),
   setCustomContract: (scope, text) => set({ customContracts: { ...get().customContracts, [scope]: text } }),
 }));

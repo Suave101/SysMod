@@ -13,6 +13,7 @@ import { saveGeneratedFile } from './Editors';
 import { behaviorDevices, exampleBehavior } from '../behavior/robotDevices';
 import { beforeMonacoMount, EDITOR_OPTIONS } from '../utils/monacoLanguages';
 import { WorkbenchModel } from './useWorkbenchModel';
+import { BehaviorProperties } from './BehaviorProperties';
 
 const THEME = Blockly.Theme.defineTheme('sysmod-dark', {
   name: 'sysmod-dark',
@@ -45,6 +46,7 @@ export const BehaviorEditor: React.FC<BehaviorEditorProps> = ({ model, onOpenFil
   const fileInput = useRef<HTMLInputElement>(null);
   const workspace = useRef<Blockly.WorkspaceSvg | null>(null);
   const [message, setMessage] = useState<{ kind: 'info' | 'error'; lines: string[] } | null>(null);
+  const [pane, setPane] = useState<'soar' | 'properties'>('soar');
   const devices = useMemo(() => behaviorDevices(model.nodes, model.subsystems), [model.nodes, model.subsystems]);
 
   // The device dropdown asks for its options each time it opens, so this keeps it current
@@ -130,16 +132,16 @@ export const BehaviorEditor: React.FC<BehaviorEditorProps> = ({ model, onOpenFil
       writeBlocksFile(useRobotStore.getState().behaviorBlocks),
     );
 
-  const button = 'flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono border border-slate-700 bg-slate-800 text-slate-300 hover:text-slate-100 hover:bg-slate-700';
+  const button = 'shrink-0 whitespace-nowrap flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono border border-slate-700 bg-slate-800 text-slate-300 hover:text-slate-100 hover:bg-slate-700';
 
   return (
     <div className="flex flex-col h-full">
       <div className="h-8 shrink-0 flex items-center justify-between px-3 border-b border-slate-800 bg-slate-900/60">
-        <div className="flex items-center gap-1 text-[11px] font-mono text-slate-400">
+        <div className="min-w-0 flex items-center gap-1 text-[11px] font-mono text-slate-400 whitespace-nowrap">
           <span>Behavior</span>
           <ChevronRight className="w-3 h-3 text-slate-600" />
           <span className="text-slate-200">Soar agent blocks</span>
-          <span className="ml-2 text-[10px] text-slate-500">
+          <span className="ml-2 text-[10px] text-slate-500 truncate">
             {model.subsystems.length} {model.subsystems.length === 1 ? 'subsystem' : 'subsystems'} and {devices.length - model.subsystems.length} devices from the diagram
           </span>
         </div>
@@ -190,12 +192,34 @@ export const BehaviorEditor: React.FC<BehaviorEditorProps> = ({ model, onOpenFil
       )}
       <div className="flex-1 min-h-0 flex">
         <div ref={host} className="flex-1 min-w-0 h-full" aria-label="Behavior blocks" />
-        <aside className="w-[34%] min-w-[260px] max-w-[520px] flex flex-col border-l border-slate-800 bg-slate-900" aria-label="Generated Soar">
-          <div className="h-8 shrink-0 flex items-center px-3 text-[11px] font-mono uppercase tracking-wider text-slate-400 border-b border-slate-800">
-            agent.soar · live
+        <aside
+          className={`${pane === 'properties' ? 'w-[44%] max-w-[720px]' : 'w-[34%] max-w-[520px]'} min-w-[280px] flex flex-col border-l border-slate-800 bg-slate-900`}
+          aria-label={pane === 'properties' ? 'Behavior properties' : 'Generated Soar'}
+        >
+          <div className="h-8 shrink-0 flex items-stretch px-2 gap-2 border-b border-slate-800" role="tablist">
+            {(
+              [
+                ['soar', 'agent.soar · live'],
+                ['properties', `Properties${model.behavior.properties.length ? ` (${model.behavior.properties.length})` : ''}`],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                role="tab"
+                aria-selected={pane === id}
+                onClick={() => setPane(id)}
+                className={`px-1.5 text-[11px] font-mono uppercase tracking-wider border-b ${pane === id ? 'text-slate-100 border-indigo-400' : 'text-slate-500 border-transparent hover:text-slate-300'}`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
           <div className="flex-1 min-h-0">
-            <Editor height="100%" language="soar" value={model.generated.soar} theme="sysmod-dark" beforeMount={beforeMonacoMount} options={CODE_OPTIONS} path="generated/agent-preview.soar" />
+            {pane === 'soar' ? (
+              <Editor height="100%" language="soar" value={model.generated.soar} theme="sysmod-dark" beforeMount={beforeMonacoMount} options={CODE_OPTIONS} path="generated/agent-preview.soar" />
+            ) : (
+              <BehaviorProperties model={model} />
+            )}
           </div>
         </aside>
       </div>
